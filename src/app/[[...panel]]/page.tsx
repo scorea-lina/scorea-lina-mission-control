@@ -32,6 +32,7 @@ import { MultiGatewayPanel } from '@/components/panels/multi-gateway-panel'
 import { SuperAdminPanel } from '@/components/panels/super-admin-panel'
 import { OfficePanel } from '@/components/panels/office-panel'
 import { GitHubSyncPanel } from '@/components/panels/github-sync-panel'
+import { ChatPagePanel } from '@/components/panels/chat-page-panel'
 import { ChatPanel } from '@/components/chat/chat-panel'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { LocalModeBanner } from '@/components/layout/local-mode-banner'
@@ -53,7 +54,7 @@ function isLocalHost(hostname: string): boolean {
 export default function Home() {
   const router = useRouter()
   const { connect } = useWebSocket()
-  const { activeTab, setActiveTab, setCurrentUser, setDashboardMode, setGatewayAvailable, setCapabilitiesChecked, setSubscription, setDefaultOrgName, setUpdateAvailable, liveFeedOpen, toggleLiveFeed, showProjectManagerModal, setShowProjectManagerModal, fetchProjects } = useMissionControl()
+  const { activeTab, setActiveTab, setCurrentUser, setDashboardMode, setGatewayAvailable, setCapabilitiesChecked, setSubscription, setDefaultOrgName, setUpdateAvailable, liveFeedOpen, toggleLiveFeed, showProjectManagerModal, setShowProjectManagerModal, fetchProjects, setChatPanelOpen } = useMissionControl()
 
   // Sync URL → Zustand activeTab
   const pathname = usePathname()
@@ -61,7 +62,10 @@ export default function Home() {
 
   useEffect(() => {
     setActiveTab(panelFromUrl)
-  }, [panelFromUrl, setActiveTab])
+    if (panelFromUrl === 'chat') {
+      setChatPanelOpen(false)
+    }
+  }, [panelFromUrl, setActiveTab, setChatPanelOpen])
 
   // Connect to SSE for real-time local DB events (tasks, agents, chat, etc.)
   useServerEvents()
@@ -345,6 +349,8 @@ function ContentRouter({ tab }: { tab: string }) {
       return <GitHubSyncPanel />
     case 'office':
       return <OfficePanel />
+    case 'chat':
+      return <ChatPagePanel />
     default:
       return <Dashboard />
   }

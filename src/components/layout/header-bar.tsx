@@ -20,7 +20,7 @@ interface SearchResult {
 }
 
 export function HeaderBar() {
-  const { activeTab, connection, sessions, chatPanelOpen, setChatPanelOpen, notifications, unreadNotificationCount, currentUser, setCurrentUser, activeTenant, activeProject } = useMissionControl()
+  const { activeTab, connection, sessions, unreadNotificationCount, currentUser, setCurrentUser, activeTenant, activeProject } = useMissionControl()
   const { isConnected, reconnect } = useWebSocket()
   const navigateToPanel = useNavigateToPanel()
 
@@ -46,6 +46,7 @@ export function HeaderBar() {
     users: 'Users',
     'gateway-config': 'Gateway Config',
     settings: 'Settings',
+    chat: 'Agent Chat',
   }
 
   // Search state
@@ -193,11 +194,11 @@ export function HeaderBar() {
           <SearchIcon />
         </Button>
 
-        {/* Chat toggle */}
+        {/* Chat */}
         <Button
-          variant={chatPanelOpen ? 'default' : 'ghost'}
+          variant={activeTab === 'chat' ? 'default' : 'ghost'}
           size="sm"
-          onClick={() => setChatPanelOpen(!chatPanelOpen)}
+          onClick={() => navigateToPanel('chat')}
           className="px-2.5"
         >
           <ChatIcon />
