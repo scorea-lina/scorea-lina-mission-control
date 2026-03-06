@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useMissionControl } from '@/store'
 import { normalizeModel } from '@/lib/utils'
 import { buildGatewayWebSocketUrl } from '@/lib/gateway-url'
@@ -43,27 +43,26 @@ interface GatewayMessage {
   timestamp?: number
 }
 
-export function useWebSocket() {
-  const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
-  const pingIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined)
-  const maxReconnectAttempts = 10
-  const reconnectUrl = useRef<string>('')
-  const authTokenRef = useRef<string>('')
-  const requestIdRef = useRef<number>(0)
-  const handshakeCompleteRef = useRef<boolean>(false)
-  const reconnectAttemptsRef = useRef<number>(0)
-  const manualDisconnectRef = useRef<boolean>(false)
-  const nonRetryableErrorRef = useRef<string | null>(null)
-  const connectRef = useRef<(url: string, token?: string) => void>(() => {})
-  const lastWebSocketErrorRef = useRef<{ message: string; at: number } | null>(null)
+// Shared websocket singleton state across hook mounts.
+const wsRef: { current: WebSocket | null } = { current: null }
+const reconnectTimeoutRef: { current: NodeJS.Timeout | undefined } = { current: undefined }
+const pingIntervalRef: { current: NodeJS.Timeout | undefined } = { current: undefined }
+const reconnectUrl: { current: string } = { current: '' }
+const authTokenRef: { current: string } = { current: '' }
+const requestIdRef: { current: number } = { current: 0 }
+const handshakeCompleteRef: { current: boolean } = { current: false }
+const reconnectAttemptsRef: { current: number } = { current: 0 }
+const manualDisconnectRef: { current: boolean } = { current: false }
+const nonRetryableErrorRef: { current: string | null } = { current: null }
+const connectRef: { current: (url: string, token?: string) => void } = { current: () => {} }
+const lastWebSocketErrorRef: { current: { message: string; at: number } | null } = { current: null }
+const pingCounterRef: { current: number } = { current: 0 }
+const pingSentTimestamps: { current: Map<string, number> } = { current: new Map() }
+const missedPongsRef: { current: number } = { current: 0 }
+const gatewaySupportsPingRef: { current: boolean } = { current: true }
 
-  // Heartbeat tracking
-  const pingCounterRef = useRef<number>(0)
-  const pingSentTimestamps = useRef<Map<string, number>>(new Map())
-  const missedPongsRef = useRef<number>(0)
-  // Compat flag for gateway versions that may not implement ping RPC.
-  const gatewaySupportsPingRef = useRef<boolean>(true)
+export function useWebSocket() {
+  const maxReconnectAttempts = 10
 
   const {
     connection,
@@ -77,7 +76,6 @@ export function useWebSocket() {
     addChatMessage,
     addNotification,
     updateAgent,
-    agents,
   } = useMissionControl()
 
   const isNonRetryableGatewayError = useCallback((message: string): boolean => {
@@ -701,13 +699,6 @@ export function useWebSocket() {
       setTimeout(() => connect(reconnectUrl.current, authTokenRef.current), 1000)
     }
   }, [connect, disconnect])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      disconnect()
-    }
-  }, [disconnect])
 
   return {
     isConnected: connection.isConnected,
