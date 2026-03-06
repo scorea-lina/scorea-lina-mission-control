@@ -12,7 +12,6 @@ import { CronManagementPanel } from '@/components/panels/cron-management-panel'
 import { MemoryBrowserPanel } from '@/components/panels/memory-browser-panel'
 import { TokenDashboardPanel } from '@/components/panels/token-dashboard-panel'
 import { AgentCostPanel } from '@/components/panels/agent-cost-panel'
-import { SessionDetailsPanel } from '@/components/panels/session-details-panel'
 import { TaskBoardPanel } from '@/components/panels/task-board-panel'
 import { ActivityFeedPanel } from '@/components/panels/activity-feed-panel'
 import { AgentSquadPanelPhase3 } from '@/components/panels/agent-squad-panel-phase3'
@@ -59,13 +58,17 @@ export default function Home() {
   // Sync URL → Zustand activeTab
   const pathname = usePathname()
   const panelFromUrl = pathname === '/' ? 'overview' : pathname.slice(1)
+  const normalizedPanel = panelFromUrl === 'sessions' ? 'chat' : panelFromUrl
 
   useEffect(() => {
-    setActiveTab(panelFromUrl)
-    if (panelFromUrl === 'chat') {
+    setActiveTab(normalizedPanel)
+    if (normalizedPanel === 'chat') {
       setChatPanelOpen(false)
     }
-  }, [panelFromUrl, setActiveTab, setChatPanelOpen])
+    if (panelFromUrl === 'sessions') {
+      router.replace('/chat')
+    }
+  }, [panelFromUrl, normalizedPanel, router, setActiveTab, setChatPanelOpen])
 
   // Connect to SSE for real-time local DB events (tasks, agents, chat, etc.)
   useServerEvents()
@@ -312,7 +315,7 @@ function ContentRouter({ tab }: { tab: string }) {
       if (isLocal) return <LocalModeUnavailable panel={tab} />
       return <AgentSpawnPanel />
     case 'sessions':
-      return <SessionDetailsPanel />
+      return <ChatPagePanel />
     case 'logs':
       return <LogViewerPanel />
     case 'cron':

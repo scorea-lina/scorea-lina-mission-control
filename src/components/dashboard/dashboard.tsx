@@ -135,7 +135,7 @@ export function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {isLocal ? (
           <>
-            <div className="cursor-pointer" onClick={() => navigateToPanel('sessions')}>
+            <div className="cursor-pointer" onClick={() => navigateToPanel('chat')}>
               <MetricCard
                 label="Active Sessions"
                 value={claudeStats?.active_sessions ?? activeSessions}
@@ -144,7 +144,7 @@ export function Dashboard() {
                 color="blue"
               />
             </div>
-            <div className="cursor-pointer" onClick={() => navigateToPanel('sessions')}>
+            <div className="cursor-pointer" onClick={() => navigateToPanel('chat')}>
               <MetricCard
                 label="Projects"
                 value={claudeStats?.unique_projects ?? 0}
@@ -175,7 +175,7 @@ export function Dashboard() {
           </>
         ) : (
           <>
-            <div className="cursor-pointer" onClick={() => navigateToPanel('history')}>
+            <div className="cursor-pointer" onClick={() => navigateToPanel('chat')}>
               <MetricCard
                 label="Active Sessions"
                 value={activeSessions}
@@ -274,7 +274,7 @@ export function Dashboard() {
 
         {/* Middle panel: Claude Stats (local) or Security & Audit (full) */}
         {isLocal ? (
-          <div className="panel cursor-pointer hover:border-primary/30 transition-smooth" onClick={() => navigateToPanel('sessions')}>
+          <div className="panel cursor-pointer hover:border-primary/30 transition-smooth" onClick={() => navigateToPanel('chat')}>
             <div className="panel-header">
               <h3 className="text-sm font-semibold text-foreground">Claude Code Stats</h3>
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-2xs font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20">

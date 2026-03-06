@@ -17,7 +17,7 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   { id: 'overview', label: 'Overview', icon: '📊', description: 'System dashboard' },
-  { id: 'sessions', label: 'Sessions', icon: '💬', description: 'Active agent sessions' },
+  { id: 'chat', label: 'Chat', icon: '💬', description: 'Agent chat sessions' },
   { id: 'tasks', label: 'Task Board', icon: '📋', description: 'Kanban task management' },
   { id: 'agents', label: 'Agent Squad', icon: '🤖', description: 'Agent management & status' },
   { id: 'activity', label: 'Activity Feed', icon: '📣', description: 'Real-time activity stream' },
