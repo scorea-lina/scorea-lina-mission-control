@@ -211,6 +211,8 @@ export interface ChatMessage {
 export interface Conversation {
   id: string
   name?: string
+  kind?: string
+  source?: 'chat' | 'session'
   participants: string[]
   lastMessage?: ChatMessage
   unreadCount: number

@@ -25,6 +25,7 @@ export function ChatWorkspace({ mode = 'embedded', onClose }: ChatWorkspaceProps
     replacePendingMessage,
     updatePendingMessage,
     agents,
+    conversations,
     setAgents,
   } = useMissionControl()
 
@@ -34,6 +35,7 @@ export function ChatWorkspace({ mode = 'embedded', onClose }: ChatWorkspaceProps
   const [isMobile, setIsMobile] = useState(false)
 
   const isOverlay = mode === 'overlay'
+  const selectedConversation = conversations.find((c) => c.id === activeConversation)
 
   // Detect mobile
   useEffect(() => {
@@ -171,6 +173,10 @@ export function ChatWorkspace({ mode = 'embedded', onClose }: ChatWorkspaceProps
     if (isMobile) setActiveConversation(null)
   }
 
+  const canSendMessage =
+    !!activeConversation &&
+    !activeConversation.startsWith('session:')
+
   return (
     <div className="flex h-full flex-col bg-card">
       {/* Header */}
@@ -244,13 +250,16 @@ export function ChatWorkspace({ mode = 'embedded', onClose }: ChatWorkspaceProps
             {/* Conversation header */}
             {activeConversation && (
               <div className="bg-surface-1 flex flex-shrink-0 items-center gap-2 border-b border-border/50 px-4 py-2">
-                <AgentAvatar name={activeConversation.replace('agent_', '')} size="sm" />
+                <AgentAvatar
+                  name={(selectedConversation?.name || activeConversation).replace('agent_', '')}
+                  size="sm"
+                />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium text-foreground">
-                    {activeConversation.replace('agent_', '')}
+                    {(selectedConversation?.name || activeConversation).replace('agent_', '')}
                   </div>
                   <div className="text-[10px] text-muted-foreground">
-                    {getAgentStatus(agents, activeConversation)}
+                    {getConversationStatus(agents, activeConversation)}
                   </div>
                 </div>
               </div>
@@ -259,7 +268,7 @@ export function ChatWorkspace({ mode = 'embedded', onClose }: ChatWorkspaceProps
             <MessageList />
             <ChatInput
               onSend={handleSend}
-              disabled={!activeConversation}
+              disabled={!canSendMessage}
               agents={agents.map(a => ({ name: a.name, role: a.role }))}
             />
           </div>
@@ -290,7 +299,8 @@ function AgentAvatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' }
   )
 }
 
-function getAgentStatus(agents: Array<{ name: string; status: string }>, conversationId: string): string {
+function getConversationStatus(agents: Array<{ name: string; status: string }>, conversationId: string): string {
+  if (conversationId.startsWith('session:')) return 'Local session (read-only)'
   const name = conversationId.replace('agent_', '')
   const agent = agents.find(a => a.name.toLowerCase() === name.toLowerCase())
   if (!agent) return 'Unknown'

@@ -11,55 +11,68 @@ export async function GET(request: NextRequest) {
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   try {
+    const { searchParams } = new URL(request.url)
+    const includeLocal = searchParams.get('include_local') === '1'
     const gatewaySessions = getAllGatewaySessions()
+    const mappedGatewaySessions = mapGatewaySessions(gatewaySessions)
 
-    // If gateway sessions exist, deduplicate and return those
-    if (gatewaySessions.length > 0) {
-      // Deduplicate by sessionId — OpenClaw tracks cron runs under the same
-      // session ID as the parent session, causing duplicate React keys (#80).
-      // Keep the most recently updated entry when duplicates exist.
-      const sessionMap = new Map<string, (typeof gatewaySessions)[0]>()
-      for (const s of gatewaySessions) {
-        const id = s.sessionId || `${s.agent}:${s.key}`
-        const existing = sessionMap.get(id)
-        if (!existing || s.updatedAt > existing.updatedAt) {
-          sessionMap.set(id, s)
-        }
-      }
-
-      const sessions = Array.from(sessionMap.values()).map((s) => {
-        const total = s.totalTokens || 0
-        const context = s.contextTokens || 35000
-        const pct = context > 0 ? Math.round((total / context) * 100) : 0
-        return {
-          id: s.sessionId || `${s.agent}:${s.key}`,
-          key: s.key,
-          agent: s.agent,
-          kind: s.chatType || 'unknown',
-          age: formatAge(s.updatedAt),
-          model: s.model,
-          tokens: `${formatTokens(total)}/${formatTokens(context)} (${pct}%)`,
-          channel: s.channel,
-          flags: [],
-          active: s.active,
-          startTime: s.updatedAt,
-          lastActivity: s.updatedAt,
-          source: 'gateway' as const,
-        }
-      })
-      return NextResponse.json({ sessions })
+    // Preserve existing behavior by default: when gateway sessions are present,
+    // return only gateway-backed sessions unless include_local=1 is requested.
+    if (mappedGatewaySessions.length > 0 && !includeLocal) {
+      return NextResponse.json({ sessions: mappedGatewaySessions })
     }
 
-    // Fallback: sync and read local Claude + Codex sessions from disk/SQLite
+    // Local Claude + Codex sessions from disk/SQLite
     await syncClaudeSessions()
     const claudeSessions = getLocalClaudeSessions()
     const codexSessions = getLocalCodexSessions()
-    const merged = mergeLocalSessions(claudeSessions, codexSessions)
+    const localMerged = mergeLocalSessions(claudeSessions, codexSessions)
+
+    if (mappedGatewaySessions.length === 0) {
+      return NextResponse.json({ sessions: localMerged })
+    }
+
+    const merged = dedupeAndSortSessions([...mappedGatewaySessions, ...localMerged])
     return NextResponse.json({ sessions: merged })
   } catch (error) {
     logger.error({ err: error }, 'Sessions API error')
     return NextResponse.json({ sessions: [] })
   }
+}
+
+function mapGatewaySessions(gatewaySessions: ReturnType<typeof getAllGatewaySessions>) {
+  // Deduplicate by sessionId — OpenClaw tracks cron runs under the same
+  // session ID as the parent session, causing duplicate React keys (#80).
+  // Keep the most recently updated entry when duplicates exist.
+  const sessionMap = new Map<string, (typeof gatewaySessions)[0]>()
+  for (const s of gatewaySessions) {
+    const id = s.sessionId || `${s.agent}:${s.key}`
+    const existing = sessionMap.get(id)
+    if (!existing || s.updatedAt > existing.updatedAt) {
+      sessionMap.set(id, s)
+    }
+  }
+
+  return Array.from(sessionMap.values()).map((s) => {
+    const total = s.totalTokens || 0
+    const context = s.contextTokens || 35000
+    const pct = context > 0 ? Math.round((total / context) * 100) : 0
+    return {
+      id: s.sessionId || `${s.agent}:${s.key}`,
+      key: s.key,
+      agent: s.agent,
+      kind: s.chatType || 'unknown',
+      age: formatAge(s.updatedAt),
+      model: s.model,
+      tokens: `${formatTokens(total)}/${formatTokens(context)} (${pct}%)`,
+      channel: s.channel,
+      flags: [],
+      active: s.active,
+      startTime: s.updatedAt,
+      lastActivity: s.updatedAt,
+      source: 'gateway' as const,
+    }
+  })
 }
 
 /** Read Claude Code sessions from the local SQLite database */
@@ -143,15 +156,21 @@ function mergeLocalSessions(
   codexSessions: Array<Record<string, any>>,
 ) {
   const merged = [...claudeSessions, ...codexSessions]
+  return dedupeAndSortSessions(merged)
+}
+
+function dedupeAndSortSessions(merged: Array<Record<string, any>>) {
   const deduped = new Map<string, Record<string, any>>()
 
   for (const session of merged) {
     const id = String(session?.id || '')
+    const source = String(session?.source || '')
+    const key = `${source}:${id}`
     if (!id) continue
-    const existing = deduped.get(id)
+    const existing = deduped.get(key)
     const currentActivity = Number(session?.lastActivity || 0)
     const existingActivity = Number(existing?.lastActivity || 0)
-    if (!existing || currentActivity > existingActivity) deduped.set(id, session)
+    if (!existing || currentActivity > existingActivity) deduped.set(key, session)
   }
 
   return Array.from(deduped.values())

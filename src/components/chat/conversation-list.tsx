@@ -35,42 +35,91 @@ export function ConversationList({ onNewConversation }: ConversationListProps) {
     setActiveConversation,
     agents,
     markConversationRead,
+    dashboardMode,
   } = useMissionControl()
   const [showNewChat, setShowNewChat] = useState(false)
   const [search, setSearch] = useState('')
 
   const loadConversations = useCallback(async () => {
     try {
-      const res = await fetch('/api/chat/conversations')
-      if (!res.ok) return
-      const data = await res.json()
-      if (data.conversations) {
-        setConversations(
-          data.conversations.map((c: any) => ({
-            id: c.conversation_id,
-            participants: [],
-            lastMessage: c.last_message
-              ? {
-                  id: c.last_message.id,
-                  conversation_id: c.last_message.conversation_id,
-                  from_agent: c.last_message.from_agent,
-                  to_agent: c.last_message.to_agent,
-                  content: c.last_message.content,
-                  message_type: c.last_message.message_type,
-                  metadata: c.last_message.metadata,
-                  read_at: c.last_message.read_at,
-                  created_at: c.last_message.created_at,
-                }
-              : undefined,
-            unreadCount: c.unread_count || 0,
-            updatedAt: c.last_message_at || 0,
-          }))
+      const [chatRes, sessionsRes] = await Promise.all([
+        fetch('/api/chat/conversations'),
+        fetch('/api/sessions?include_local=1'),
+      ])
+
+      if (!chatRes.ok) return
+      const chatData = await chatRes.json()
+      const sessionsData = sessionsRes.ok ? await sessionsRes.json() : { sessions: [] }
+
+      const chatConversations = (chatData.conversations || []).map((c: any) => ({
+        id: c.conversation_id,
+        name: c.conversation_id.startsWith('agent_')
+          ? c.conversation_id.replace('agent_', '')
+          : c.conversation_id,
+        source: 'chat' as const,
+        participants: [],
+        lastMessage: c.last_message
+          ? {
+              id: c.last_message.id,
+              conversation_id: c.last_message.conversation_id,
+              from_agent: c.last_message.from_agent,
+              to_agent: c.last_message.to_agent,
+              content: c.last_message.content,
+              message_type: c.last_message.message_type,
+              metadata: c.last_message.metadata,
+              read_at: c.last_message.read_at,
+              created_at: c.last_message.created_at,
+            }
+          : undefined,
+        unreadCount: c.unread_count || 0,
+        updatedAt: Number(c.last_message_at || 0),
+      }))
+
+      // In local mode, surface local Claude/Codex sessions as read-only chat rows.
+      const localToolSessions = (sessionsData.sessions || [])
+        .filter((s: any) =>
+          s?.source === 'local' &&
+          (s?.kind === 'claude-code' || s?.kind === 'codex-cli')
         )
-      }
+        .map((s: any) => {
+          const lastActivityMs = Number(s.lastActivity || s.startTime || 0)
+          const updatedAt = lastActivityMs > 1_000_000_000_000
+            ? Math.floor(lastActivityMs / 1000)
+            : lastActivityMs
+          const kindLabel = s.kind === 'codex-cli' ? 'Codex' : 'Claude'
+          const sessionName = `${kindLabel} • ${s.key || s.id}`
+
+          return {
+            id: `session:${s.kind}:${s.id}`,
+            name: sessionName,
+            kind: s.kind,
+            source: 'session' as const,
+            participants: [],
+            lastMessage: {
+              id: Number(`9${String(s.id).replace(/\D/g, '').slice(-12)}`) || Date.now(),
+              conversation_id: `session:${s.kind}:${s.id}`,
+              from_agent: 'system',
+              to_agent: null,
+              content: `${s.model || kindLabel} • ${s.tokens || ''}`.trim(),
+              message_type: 'system' as const,
+              created_at: updatedAt || Math.floor(Date.now() / 1000),
+            },
+            unreadCount: 0,
+            updatedAt,
+          }
+        })
+
+      const mergedConversations = dashboardMode === 'local'
+        ? [...chatConversations, ...localToolSessions]
+        : chatConversations
+
+      setConversations(
+        mergedConversations.sort((a: Conversation, b: Conversation) => b.updatedAt - a.updatedAt)
+      )
     } catch (err) {
       log.error('Failed to load conversations:', err)
     }
-  }, [setConversations])
+  }, [dashboardMode, setConversations])
 
   useSmartPoll(loadConversations, 30000, { pauseWhenSseConnected: true })
 
@@ -84,6 +133,7 @@ export function ConversationList({ onNewConversation }: ConversationListProps) {
     const s = search.toLowerCase()
     return (
       c.id.toLowerCase().includes(s) ||
+      (c.name || '').toLowerCase().includes(s) ||
       c.lastMessage?.from_agent.toLowerCase().includes(s) ||
       c.lastMessage?.content.toLowerCase().includes(s)
     )
@@ -156,6 +206,8 @@ export function ConversationList({ onNewConversation }: ConversationListProps) {
           </div>
         ) : (
           filteredConversations.map((conv) => {
+            const displayName = conv.name || conv.id.replace('agent_', '')
+            const isSessionRow = conv.id.startsWith('session:')
             const agentName = conv.id.replace('agent_', '')
             const agent = agents.find(a => a.name.toLowerCase() === agentName.toLowerCase())
             const isActive = activeConversation === conv.id
@@ -175,9 +227,9 @@ export function ConversationList({ onNewConversation }: ConversationListProps) {
                   {/* Mini avatar */}
                   <div className="relative flex-shrink-0">
                     <div className="w-7 h-7 rounded-full bg-surface-2 flex items-center justify-center text-[10px] font-bold text-muted-foreground">
-                      {agentName.charAt(0).toUpperCase()}
+                      {displayName.charAt(0).toUpperCase()}
                     </div>
-                    {agent && (
+                    {agent && !isSessionRow && (
                       <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-card ${STATUS_COLORS[agent.status] || STATUS_COLORS.offline}`} />
                     )}
                   </div>
@@ -185,7 +237,7 @@ export function ConversationList({ onNewConversation }: ConversationListProps) {
                   <div className="flex-1 min-w-0 text-left">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-medium text-foreground truncate">
-                        {agentName}
+                        {displayName}
                       </span>
                       <div className="flex items-center gap-1 flex-shrink-0 ml-1">
                         {conv.unreadCount > 0 && (
