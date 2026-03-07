@@ -2,9 +2,15 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import type Database from 'better-sqlite3'
 
-type Migration = {
+export type Migration = {
   id: string
   up: (db: Database.Database) => void
+}
+
+// Plugin hook: Pro can register additional migrations without modifying this file.
+const extraMigrations: Migration[] = []
+export function registerMigrations(newMigrations: Migration[]): void {
+  extraMigrations.push(...newMigrations)
 }
 
 const migrations: Migration[] = [
@@ -978,6 +984,24 @@ const migrations: Migration[] = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_user_sessions_tenant_id ON user_sessions(tenant_id)`)
       db.exec(`CREATE INDEX IF NOT EXISTS idx_user_sessions_workspace_tenant ON user_sessions(workspace_id, tenant_id)`)
     }
+  },
+  {
+    id: '032_adapter_configs',
+    up(db: Database.Database) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS adapter_configs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          workspace_id INTEGER NOT NULL,
+          framework TEXT NOT NULL,
+          config TEXT DEFAULT '{}',
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+        )
+      `)
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_adapter_configs_workspace_framework ON adapter_configs(workspace_id, framework)`)
+    }
   }
 ]
 
@@ -993,7 +1017,7 @@ export function runMigrations(db: Database.Database) {
     db.prepare('SELECT id FROM schema_migrations').all().map((row: any) => row.id)
   )
 
-  for (const migration of migrations) {
+  for (const migration of [...migrations, ...extraMigrations]) {
     if (applied.has(migration.id)) continue
     db.transaction(() => {
       migration.up(db)

@@ -2,6 +2,13 @@ import { randomBytes, timingSafeEqual } from 'crypto'
 import { getDatabase } from './db'
 import { hashPassword, verifyPassword } from './password'
 
+// Plugin hook: Pro can register a custom API key resolver without modifying this file.
+type AuthResolverHook = (apiKey: string, agentName: string | null) => User | null
+let _authResolverHook: AuthResolverHook | null = null
+export function registerAuthResolver(hook: AuthResolverHook): void {
+  _authResolverHook = hook
+}
+
 /**
  * Constant-time string comparison to prevent timing attacks.
  */
@@ -326,6 +333,7 @@ export function getUserFromRequest(request: Request): User | null {
   // Check API key - return synthetic user
   const configuredApiKey = (process.env.API_KEY || '').trim()
   const apiKey = extractApiKeyFromHeaders(request.headers)
+
   if (configuredApiKey && apiKey && safeCompare(apiKey, configuredApiKey)) {
     return {
       id: 0,
@@ -339,6 +347,12 @@ export function getUserFromRequest(request: Request): User | null {
       last_login_at: null,
       agent_name: agentName,
     }
+  }
+
+  // Plugin hook: allow Pro (or other extensions) to resolve custom API keys
+  if (apiKey && _authResolverHook) {
+    const resolved = _authResolverHook(apiKey, agentName)
+    if (resolved) return resolved
   }
 
   return null
