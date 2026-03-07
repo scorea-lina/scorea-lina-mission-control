@@ -97,3 +97,80 @@ export const heavyLimiter = createRateLimiter({
   maxRequests: 10,
   message: 'Too many requests for this resource. Please try again later.',
 })
+
+// ---------------------------------------------------------------------------
+// Per-agent rate limiter
+// ---------------------------------------------------------------------------
+
+/**
+ * Rate limit by agent identity (x-agent-name header) instead of IP.
+ * Useful for agent-facing endpoints where multiple agents share an IP
+ * (e.g. all running on the same server) but each should have its own quota.
+ *
+ * Falls back to IP-based limiting if no agent name is provided.
+ */
+export function createAgentRateLimiter(options: RateLimiterOptions) {
+  const store = new Map<string, RateLimitEntry>()
+
+  const cleanupInterval = setInterval(() => {
+    const now = Date.now()
+    for (const [key, entry] of store) {
+      if (now > entry.resetAt) store.delete(key)
+    }
+  }, 60_000)
+  if (cleanupInterval.unref) cleanupInterval.unref()
+
+  return function checkAgentRateLimit(request: Request): NextResponse | null {
+    if (process.env.MC_DISABLE_RATE_LIMIT === '1' && !options.critical) return null
+
+    const agentName = (request.headers.get('x-agent-name') || '').trim()
+    const key = agentName || `ip:${extractClientIp(request)}`
+    const now = Date.now()
+    const entry = store.get(key)
+
+    if (!entry || now > entry.resetAt) {
+      store.set(key, { count: 1, resetAt: now + options.windowMs })
+      return null
+    }
+
+    entry.count++
+    if (entry.count > options.maxRequests) {
+      const who = agentName ? `Agent "${agentName}"` : 'Client'
+      return NextResponse.json(
+        { error: options.message || `${who} has exceeded the rate limit. Please try again later.` },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil((entry.resetAt - now) / 1000)),
+            'X-RateLimit-Limit': String(options.maxRequests),
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': String(Math.ceil(entry.resetAt / 1000)),
+          },
+        }
+      )
+    }
+
+    return null
+  }
+}
+
+/** Per-agent heartbeat/status updates: 30/min per agent */
+export const agentHeartbeatLimiter = createAgentRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 30,
+  message: 'Agent heartbeat rate limit exceeded.',
+})
+
+/** Per-agent task polling: 20/min per agent */
+export const agentTaskLimiter = createAgentRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 20,
+  message: 'Agent task polling rate limit exceeded.',
+})
+
+/** Self-registration: 5/min per IP (prevent spam registrations) */
+export const selfRegisterLimiter = createRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 5,
+  message: 'Too many registration attempts. Please try again later.',
+})

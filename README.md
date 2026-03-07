@@ -68,6 +68,8 @@ If `AUTH_PASS` contains `#`, quote it (e.g. `AUTH_PASS="my#password"`) or use `A
 - Update available banner with GitHub release check and one-click self-update
 - Framework adapter layer for multi-agent registration (OpenClaw, CrewAI, LangGraph, AutoGen, Claude SDK, generic)
 - Multi-project task organization with per-project ticket prefixes
+- Per-agent rate limiting with `x-agent-name` identity-based quotas
+- Agent self-registration endpoint for autonomous agent onboarding
 
 ### Known Limitations
 
@@ -138,7 +140,7 @@ mission-control/
 │   ├── app/
 │   │   ├── page.tsx           # SPA shell — routes all panels
 │   │   ├── login/page.tsx     # Login page
-│   │   └── api/               # 95 REST API routes
+│   │   └── api/               # 97 REST API routes
 │   ├── components/
 │   │   ├── layout/            # NavRail, HeaderBar, LiveFeed
 │   │   ├── dashboard/         # Overview dashboard
@@ -172,7 +174,7 @@ mission-control/
 | Real-time | WebSocket + Server-Sent Events |
 | Auth | scrypt hashing, session tokens, RBAC |
 | Validation | Zod 4 |
-| Testing | Vitest + Playwright (148 E2E tests) |
+| Testing | Vitest (143 unit) + Playwright (295 E2E) |
 
 ## Authentication
 
@@ -217,7 +219,8 @@ All endpoints require authentication unless noted. Full reference below.
 | `POST` | `/api/agents` | operator | Register/update agent |
 | `GET` | `/api/agents/[id]` | viewer | Agent details |
 | `GET` | `/api/agents/[id]/attribution` | viewer | Self-scope attribution/audit/cost report (`?privileged=1` admin override) |
-| `POST` | `/api/agents/sync` | operator | Sync agents from openclaw.json |
+| `POST` | `/api/agents/sync` | operator | Sync agents from openclaw.json or local disk (`?source=local`) |
+| `POST` | `/api/agents/register` | viewer | Agent self-registration (idempotent, rate-limited) |
 | `GET/PUT` | `/api/agents/[id]/soul` | operator | Agent SOUL content (reads from workspace, writes to both) |
 | `GET/POST` | `/api/agents/comms` | operator | Agent inter-agent communication |
 | `POST` | `/api/agents/message` | operator | Send message to agent |
