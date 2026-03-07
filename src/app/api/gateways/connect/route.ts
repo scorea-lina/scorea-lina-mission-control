@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { readFileSync } from 'node:fs'
 import { requireRole } from '@/lib/auth'
 import { getDatabase } from '@/lib/db'
 import { buildGatewayWebSocketUrl } from '@/lib/gateway-url'
@@ -30,6 +31,66 @@ function inferBrowserProtocol(request: NextRequest): 'http:' | 'https:' {
 
   if (request.nextUrl.protocol === 'https:') return 'https:'
   return 'http:'
+}
+
+const LOCALHOST_HOSTS = new Set(['127.0.0.1', 'localhost', '::1'])
+
+/** Read the OpenClaw config to detect Tailscale Serve mode. */
+function detectTailscaleServe(): boolean {
+  const configPath = process.env.OPENCLAW_CONFIG_PATH || ''
+  if (!configPath) return false
+  try {
+    const raw = readFileSync(configPath, 'utf-8')
+    const config = JSON.parse(raw)
+    return config?.gateway?.tailscale?.mode === 'serve'
+  } catch {
+    return false
+  }
+}
+
+/** Cache Tailscale Serve detection (config rarely changes at runtime). */
+let _tailscaleServeCache: boolean | null = null
+function isTailscaleServe(): boolean {
+  if (_tailscaleServeCache === null) _tailscaleServeCache = detectTailscaleServe()
+  return _tailscaleServeCache
+}
+
+/** Extract the browser-facing hostname from the request. */
+function getBrowserHostname(request: NextRequest): string {
+  const origin = request.headers.get('origin') || request.headers.get('referer') || ''
+  if (origin) {
+    try { return new URL(origin).hostname } catch { /* ignore */ }
+  }
+  const hostHeader = request.headers.get('host') || ''
+  return hostHeader.split(':')[0]
+}
+
+/**
+ * When the gateway is on localhost but the browser is remote, resolve the
+ * correct WebSocket URL the browser should use.
+ *
+ * - Tailscale Serve mode: `wss://<dashboard-host>/gw` (Tailscale proxies /gw to localhost gateway)
+ * - Otherwise: rewrite host to dashboard hostname with the gateway port
+ */
+function resolveRemoteGatewayUrl(
+  gateway: { host: string; port: number },
+  request: NextRequest,
+): string | null {
+  const normalized = (gateway.host || '').toLowerCase().trim()
+  if (!LOCALHOST_HOSTS.has(normalized)) return null // remote host — use normal path
+
+  const browserHost = getBrowserHostname(request)
+  if (!browserHost || LOCALHOST_HOSTS.has(browserHost.toLowerCase())) return null // local access
+
+  // Browser is remote — determine the correct proxied URL
+  if (isTailscaleServe()) {
+    // Tailscale Serve proxies /gw → localhost:18789 with TLS
+    return `wss://${browserHost}/gw`
+  }
+
+  // No Tailscale Serve — try direct connection to dashboard host on gateway port
+  const protocol = inferBrowserProtocol(request) === 'https:' ? 'wss' : 'ws'
+  return `${protocol}://${browserHost}:${gateway.port}`
 }
 
 function ensureTable(db: ReturnType<typeof getDatabase>) {
@@ -83,7 +144,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Gateway not found' }, { status: 404 })
   }
 
-  const ws_url = buildGatewayWebSocketUrl({
+  // When gateway host is localhost but the browser is remote (e.g. Tailscale),
+  // resolve the correct browser-accessible WebSocket URL.
+  const remoteUrl = resolveRemoteGatewayUrl(gateway, request)
+  const ws_url = remoteUrl || buildGatewayWebSocketUrl({
     host: gateway.host,
     port: gateway.port,
     browserProtocol: inferBrowserProtocol(request),
