@@ -34,6 +34,8 @@ interface Agent {
     total: number
     assigned: number
     in_progress: number
+    quality_review: number
+    done: number
     completed: number
   }
 }
@@ -467,6 +469,14 @@ export function AgentSquadPanelPhase3() {
                     <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-center">
                       <div className="text-lg font-semibold text-amber-300">{agent.taskStats.in_progress}</div>
                       <div className="text-xs text-muted-foreground">In Progress</div>
+                    </div>
+                    <div className="rounded-lg border border-violet-500/30 bg-violet-500/10 p-2.5 text-center">
+                      <div className="text-lg font-semibold text-violet-300">{agent.taskStats.quality_review}</div>
+                      <div className="text-xs text-muted-foreground">Quality Review</div>
+                    </div>
+                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-center">
+                      <div className="text-lg font-semibold text-emerald-300">{agent.taskStats.done}</div>
+                      <div className="text-xs text-muted-foreground">Done</div>
                     </div>
                   </div>
                 )}

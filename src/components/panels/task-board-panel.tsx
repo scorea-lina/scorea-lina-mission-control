@@ -857,7 +857,8 @@ function TaskDetailModal({
   onEdit: (task: Task) => void
   onDelete: () => void
 }) {
-  const { currentUser } = useMissionControl()
+  const router = useRouter()
+  const { currentUser, setConversations, setActiveConversation, conversations } = useMissionControl()
   const commentAuthor = currentUser?.username || 'system'
   const resolvedProjectName =
     task.project_name ||
@@ -1138,6 +1139,53 @@ function TaskDetailModal({
                       </a>
                     </div>
                   )}
+                </>
+              )}
+              {task.metadata?.dispatch_session_id && (
+                <>
+                  <div className="col-span-2 mt-2 pt-2 border-t border-border/50">
+                    <span className="text-muted-foreground text-xs font-medium uppercase tracking-wider">Agent Session</span>
+                  </div>
+                  <div className="col-span-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        const sessionId = task.metadata.dispatch_session_id
+                        const convId = `session:claude-code:${sessionId}`
+                        // Add conversation entry if not already present
+                        if (!conversations.find(c => c.id === convId)) {
+                          setConversations([
+                            ...conversations,
+                            {
+                              id: convId,
+                              name: `${task.assigned_to || 'Agent'} • Task #${task.id}`,
+                              kind: 'claude-code',
+                              source: 'session',
+                              session: {
+                                sessionId,
+                                sessionKind: 'claude-code',
+                                displayName: `${task.assigned_to || 'Agent'} • Task #${task.id}`,
+                                active: task.status === 'in_progress',
+                              },
+                              participants: [],
+                              unreadCount: 0,
+                              updatedAt: Math.floor(Date.now() / 1000),
+                            },
+                          ])
+                        }
+                        setActiveConversation(convId)
+                        onClose()
+                        router.push('/chat')
+                      }}
+                      className="font-mono text-xs"
+                    >
+                      View Session {task.metadata.dispatch_session_id.slice(0, 8)}...
+                    </Button>
+                    {task.status === 'in_progress' && (
+                      <span className="ml-2 text-xs text-green-400 animate-pulse">Live</span>
+                    )}
+                  </div>
                 </>
               )}
             </div>

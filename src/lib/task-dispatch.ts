@@ -38,21 +38,30 @@ function buildTaskPrompt(task: DispatchableTask): string {
   return lines.join('\n')
 }
 
-function parseAgentResponse(stdout: string): string | null {
+interface AgentResponseParsed {
+  text: string | null
+  sessionId: string | null
+}
+
+function parseAgentResponse(stdout: string): AgentResponseParsed {
   try {
     const parsed = JSON.parse(stdout)
+    const sessionId: string | null = typeof parsed?.sessionId === 'string' ? parsed.sessionId
+      : typeof parsed?.session_id === 'string' ? parsed.session_id
+      : null
+
     // OpenClaw agent --json returns { payloads: [{ text: "..." }] }
     if (parsed?.payloads?.[0]?.text) {
-      return parsed.payloads[0].text
+      return { text: parsed.payloads[0].text, sessionId }
     }
     // Fallback: if there's a result or output field
-    if (parsed?.result) return String(parsed.result)
-    if (parsed?.output) return String(parsed.output)
+    if (parsed?.result) return { text: String(parsed.result), sessionId }
+    if (parsed?.output) return { text: String(parsed.output), sessionId }
     // Last resort: stringify the whole response
-    return JSON.stringify(parsed, null, 2)
+    return { text: JSON.stringify(parsed, null, 2), sessionId }
   } catch {
     // Not valid JSON — return raw stdout if non-empty
-    return stdout.trim() || null
+    return { text: stdout.trim() || null, sessionId: null }
   }
 }
 
@@ -108,20 +117,31 @@ export async function dispatchAssignedTasks(): Promise<{ ok: boolean; message: s
         { timeoutMs: 130_000 }
       )
 
-      const responseText = parseAgentResponse(result.stdout)
+      const agentResponse = parseAgentResponse(result.stdout)
 
-      if (!responseText) {
+      if (!agentResponse.text) {
         throw new Error('Agent returned empty response')
       }
 
-      const truncated = responseText.length > 10_000
-        ? responseText.substring(0, 10_000) + '\n\n[Response truncated at 10,000 characters]'
-        : responseText
+      const truncated = agentResponse.text.length > 10_000
+        ? agentResponse.text.substring(0, 10_000) + '\n\n[Response truncated at 10,000 characters]'
+        : agentResponse.text
+
+      // Merge dispatch_session_id into existing metadata
+      const existingMeta = (() => {
+        try {
+          const row = db.prepare('SELECT metadata FROM tasks WHERE id = ?').get(task.id) as { metadata: string } | undefined
+          return row?.metadata ? JSON.parse(row.metadata) : {}
+        } catch { return {} }
+      })()
+      if (agentResponse.sessionId) {
+        existingMeta.dispatch_session_id = agentResponse.sessionId
+      }
 
       // Update task: status → review, set outcome
       db.prepare(`
-        UPDATE tasks SET status = ?, outcome = ?, resolution = ?, updated_at = ? WHERE id = ?
-      `).run('review', 'success', truncated, Math.floor(Date.now() / 1000), task.id)
+        UPDATE tasks SET status = ?, outcome = ?, resolution = ?, metadata = ?, updated_at = ? WHERE id = ?
+      `).run('review', 'success', truncated, JSON.stringify(existingMeta), Math.floor(Date.now() / 1000), task.id)
 
       // Add a comment from the agent with the full response
       db.prepare(`
@@ -146,6 +166,7 @@ export async function dispatchAssignedTasks(): Promise<{ ok: boolean; message: s
         status: 'review',
         outcome: 'success',
         assigned_to: task.assigned_to,
+        dispatch_session_id: agentResponse.sessionId,
       })
 
       db_helpers.logActivity(
@@ -154,7 +175,7 @@ export async function dispatchAssignedTasks(): Promise<{ ok: boolean; message: s
         task.id,
         task.agent_name,
         `Agent completed task "${task.title}" — awaiting review`,
-        { response_length: responseText.length },
+        { response_length: agentResponse.text.length, dispatch_session_id: agentResponse.sessionId },
         task.workspace_id
       )
 
