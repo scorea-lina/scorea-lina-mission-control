@@ -93,6 +93,16 @@ export function OverviewTab({
   const [messageFrom, setMessageFrom] = useState('system')
   const [directMessage, setDirectMessage] = useState('')
   const [messageStatus, setMessageStatus] = useState<string | null>(null)
+  const [availableModels, setAvailableModels] = useState<Array<{ alias: string; description?: string }>>([])
+
+  useEffect(() => {
+    fetch('/api/status?action=models')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.models) setAvailableModels(data.models)
+      })
+      .catch(() => {})
+  }, [])
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -111,230 +121,192 @@ export function OverviewTab({
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Failed to send message')
       setDirectMessage('')
-      setMessageStatus('Message sent')
+      setMessageStatus('Sent')
+      setTimeout(() => setMessageStatus(null), 2000)
     } catch (error) {
-      setMessageStatus('Failed to send message')
+      setMessageStatus('Failed')
     }
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Status Controls */}
-      <div className="p-4 bg-surface-1/50 rounded-lg">
-        <h4 className="text-sm font-medium text-foreground mb-3">Status Control</h4>
-        <div className="flex gap-2 mb-3">
-          {(['idle', 'busy', 'offline'] as const).map(status => (
-            <Button
-              key={status}
-              onClick={() => onStatusUpdate(agent.name, status)}
-              variant={agent.status === status ? 'default' : 'secondary'}
-              size="sm"
+    <div className="p-5">
+      <div className="grid md:grid-cols-[1fr_1fr] gap-5">
+        {/* Left Column — Agent Details */}
+        <div className="space-y-4">
+          {/* Status + Actions row */}
+          <div className="flex items-center gap-2">
+            {(['idle', 'busy', 'offline'] as const).map(status => (
+              <button
+                key={status}
+                onClick={() => onStatusUpdate(agent.name, status)}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                  agent.status === status
+                    ? status === 'idle' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : status === 'busy' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : 'bg-slate-500/20 text-slate-300 border-slate-500/40'
+                    : 'bg-transparent text-muted-foreground border-border hover:border-foreground/30 hover:text-foreground'
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+            {agent.session_key && (
+              <button
+                onClick={() => onWakeAgent(agent.name, agent.session_key!)}
+                className="ml-auto px-3 py-1 text-xs rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 transition-colors"
+              >
+                Wake
+              </button>
+            )}
+            <button
+              onClick={onPerformHeartbeat}
+              disabled={loadingHeartbeat}
+              className="px-3 py-1 text-xs rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-50 ml-auto"
+              style={agent.session_key ? { marginLeft: 0 } : undefined}
             >
-              {statusIcons[status]} {status}
-            </Button>
-          ))}
+              {loadingHeartbeat ? '...' : 'Heartbeat'}
+            </button>
+          </div>
+
+          {heartbeatData && (
+            <div className="text-xs text-muted-foreground bg-surface-1/30 rounded px-3 py-2">
+              <span className={heartbeatData.status === 'HEARTBEAT_OK' ? 'text-green-400' : 'text-yellow-400'}>
+                {heartbeatData.status}
+              </span>
+              {heartbeatData.total_items ? ` · ${heartbeatData.total_items} work items` : ''}
+              {heartbeatData.message && ` · ${heartbeatData.message}`}
+            </div>
+          )}
+
+          {/* Key fields */}
+          <div className="space-y-3">
+            <div className="grid grid-cols-[100px_1fr] gap-2 items-center text-sm">
+              <span className="text-muted-foreground">Role</span>
+              {editing ? (
+                <input
+                  type="text"
+                  value={formData.role}
+                  onChange={(e) => setFormData((prev: any) => ({ ...prev, role: e.target.value }))}
+                  className="bg-surface-1 text-foreground border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                />
+              ) : (
+                <span className="text-foreground">{agent.role}</span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-[100px_1fr] gap-2 items-center text-sm">
+              <span className="text-muted-foreground">Model</span>
+              {editing ? (
+                <select
+                  value={formData.model || ''}
+                  onChange={(e) => setFormData((prev: any) => ({ ...prev, model: e.target.value }))}
+                  className="bg-surface-1 text-foreground border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                >
+                  <option value="">Default</option>
+                  {availableModels.map((m) => (
+                    <option key={m.alias} value={m.alias}>{m.alias}</option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-foreground font-mono text-xs">
+                  {(agent as any).config?.model?.primary || (agent as any).model || 'default'}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-[100px_1fr] gap-2 items-center text-sm">
+              <span className="text-muted-foreground">Session Key</span>
+              {editing ? (
+                <input
+                  type="text"
+                  value={formData.session_key}
+                  onChange={(e) => setFormData((prev: any) => ({ ...prev, session_key: e.target.value }))}
+                  className="bg-surface-1 text-foreground border border-border rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
+                  placeholder="OpenClaw session ID"
+                />
+              ) : (
+                <span className="text-foreground font-mono text-xs">
+                  {agent.session_key || <span className="text-muted-foreground/50">Not set</span>}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-[100px_1fr] gap-2 items-center text-sm">
+              <span className="text-muted-foreground">Created</span>
+              <span className="text-xs text-muted-foreground">{new Date(agent.created_at * 1000).toLocaleDateString()}</span>
+            </div>
+            <div className="grid grid-cols-[100px_1fr] gap-2 items-center text-sm">
+              <span className="text-muted-foreground">Updated</span>
+              <span className="text-xs text-muted-foreground">{new Date(agent.updated_at * 1000).toLocaleDateString()}</span>
+            </div>
+          </div>
+
+          {/* Task Stats — compact row */}
+          {agent.taskStats && (
+            <div className="flex gap-3 pt-1">
+              <div className="text-center">
+                <div className="text-lg font-semibold text-foreground">{agent.taskStats.total}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-semibold text-blue-400">{agent.taskStats.assigned}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Assigned</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-semibold text-yellow-400">{agent.taskStats.in_progress}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Active</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-semibold text-green-400">{agent.taskStats.completed}</div>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Done</div>
+              </div>
+            </div>
+          )}
+
+          {/* Edit / Save */}
+          <div className="flex gap-2 pt-1">
+            {editing ? (
+              <>
+                <Button onClick={onSave} size="sm">Save</Button>
+                <Button onClick={onCancel} variant="secondary" size="sm">Cancel</Button>
+              </>
+            ) : (
+              <Button onClick={onEdit} variant="secondary" size="sm">Edit</Button>
+            )}
+          </div>
         </div>
 
-        {/* Wake Agent Button */}
-        {agent.session_key && (
-          <Button
-            onClick={() => onWakeAgent(agent.name, agent.session_key!)}
-            className="w-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30"
-          >
-            Wake Agent via Session
-          </Button>
-        )}
-      </div>
-
-      {/* Direct Message */}
-      <div className="p-4 bg-surface-1/50 rounded-lg">
-        <h4 className="text-sm font-medium text-foreground mb-3">Direct Message</h4>
-        {messageStatus && (
-          <div className="text-xs text-foreground/80 mb-2">{messageStatus}</div>
-        )}
-        <form onSubmit={handleSendMessage} className="space-y-2">
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">From</label>
+        {/* Right Column — Direct Message */}
+        <div className="border border-border rounded-lg p-4 flex flex-col">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-medium text-foreground">Message</h4>
+            {messageStatus && (
+              <span className={`text-xs ${messageStatus === 'Sent' ? 'text-green-400' : 'text-rose-400'}`}>
+                {messageStatus}
+              </span>
+            )}
+          </div>
+          <form onSubmit={handleSendMessage} className="flex flex-col flex-1 gap-2">
             <input
               type="text"
               value={messageFrom}
               onChange={(e) => setMessageFrom(e.target.value)}
-              className="w-full bg-surface-1 text-foreground rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+              className="bg-surface-1 text-foreground rounded px-2.5 py-1.5 text-xs border border-border focus:outline-none focus:ring-1 focus:ring-primary/50"
+              placeholder="From"
             />
-          </div>
-          <div>
-            <label className="block text-xs text-muted-foreground mb-1">Message</label>
             <textarea
               value={directMessage}
               onChange={(e) => setDirectMessage(e.target.value)}
-              className="w-full bg-surface-1 text-foreground rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
-              rows={3}
+              className="flex-1 min-h-[80px] bg-surface-1 text-foreground rounded px-2.5 py-2 text-sm border border-border focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none"
+              placeholder={`Send a message to ${agent.name}...`}
             />
-          </div>
-          <div className="flex justify-end">
-            <Button
-              type="submit"
-              size="sm"
-            >
-              Send Message
-            </Button>
-          </div>
-        </form>
-      </div>
-
-      {/* Heartbeat Check */}
-      <div className="p-4 bg-surface-1/50 rounded-lg">
-        <div className="flex justify-between items-center mb-3">
-          <h4 className="text-sm font-medium text-foreground">Heartbeat Check</h4>
-          <Button
-            onClick={onPerformHeartbeat}
-            disabled={loadingHeartbeat}
-            size="sm"
-          >
-            {loadingHeartbeat ? 'Checking...' : 'Check Now'}
-          </Button>
+            <div className="flex justify-end">
+              <Button type="submit" size="sm" disabled={!directMessage.trim()}>
+                Send
+              </Button>
+            </div>
+          </form>
         </div>
-        
-        {heartbeatData && (
-          <div className="space-y-2">
-            <div className="text-sm text-foreground/80">
-              <strong>Status:</strong> {heartbeatData.status}
-            </div>
-            <div className="text-sm text-foreground/80">
-              <strong>Checked:</strong> {new Date(heartbeatData.checked_at * 1000).toLocaleString()}
-            </div>
-            
-            {heartbeatData.work_items && heartbeatData.work_items.length > 0 && (
-              <div className="mt-3">
-                <div className="text-sm font-medium text-yellow-400 mb-2">
-                  Work Items Found: {heartbeatData.total_items}
-                </div>
-                {heartbeatData.work_items.map((item, idx) => (
-                  <div key={idx} className="text-sm text-foreground/80 ml-2">
-                    • {item.type}: {item.count} items
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {heartbeatData.message && (
-              <div className="text-sm text-foreground/80">
-                <strong>Message:</strong> {heartbeatData.message}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Agent Details */}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-1">Role</label>
-          {editing ? (
-            <input
-              type="text"
-              value={formData.role}
-              onChange={(e) => setFormData((prev: any) => ({ ...prev, role: e.target.value }))}
-              className="w-full bg-surface-1 text-foreground border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary/50"
-            />
-          ) : (
-            <p className="text-foreground">{agent.role}</p>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-1">Session Key</label>
-          {editing ? (
-            <input
-              type="text"
-              value={formData.session_key}
-              onChange={(e) => setFormData((prev: any) => ({ ...prev, session_key: e.target.value }))}
-              className="w-full bg-surface-1 text-foreground border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary/50"
-              placeholder="OpenClaw session identifier"
-            />
-          ) : (
-            <div className="flex items-center gap-2">
-              <p className="text-foreground font-mono">{agent.session_key || 'Not set'}</p>
-              {agent.session_key && (
-                <div className="flex items-center gap-1 text-xs text-green-400">
-                  <div className="w-2 h-2 rounded-full bg-green-400"></div>
-                  <span>Bound</span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Task Statistics */}
-        {agent.taskStats && (
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1">Task Statistics</label>
-            <div className="grid grid-cols-4 gap-2">
-              <div className="bg-surface-1/50 rounded p-3 text-center">
-                <div className="text-lg font-semibold text-foreground">{agent.taskStats.total}</div>
-                <div className="text-xs text-muted-foreground">Total</div>
-              </div>
-              <div className="bg-surface-1/50 rounded p-3 text-center">
-                <div className="text-lg font-semibold text-blue-400">{agent.taskStats.assigned}</div>
-                <div className="text-xs text-muted-foreground">Assigned</div>
-              </div>
-              <div className="bg-surface-1/50 rounded p-3 text-center">
-                <div className="text-lg font-semibold text-yellow-400">{agent.taskStats.in_progress}</div>
-                <div className="text-xs text-muted-foreground">In Progress</div>
-              </div>
-              <div className="bg-surface-1/50 rounded p-3 text-center">
-                <div className="text-lg font-semibold text-green-400">{agent.taskStats.completed}</div>
-                <div className="text-xs text-muted-foreground">Done</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Timestamps */}
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-muted-foreground">Created:</span>
-            <span className="text-foreground ml-2">{new Date(agent.created_at * 1000).toLocaleDateString()}</span>
-          </div>
-          <div>
-            <span className="text-muted-foreground">Last Updated:</span>
-            <span className="text-foreground ml-2">{new Date(agent.updated_at * 1000).toLocaleDateString()}</span>
-          </div>
-          {agent.last_seen && (
-            <div className="col-span-2">
-              <span className="text-muted-foreground">Last Seen:</span>
-              <span className="text-foreground ml-2">{new Date(agent.last_seen * 1000).toLocaleString()}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-3 mt-6">
-        {editing ? (
-          <>
-            <Button
-              onClick={onSave}
-              className="flex-1"
-            >
-              Save Changes
-            </Button>
-            <Button
-              onClick={onCancel}
-              variant="secondary"
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-          </>
-        ) : (
-          <Button
-            onClick={onEdit}
-            className="flex-1"
-          >
-            Edit Agent
-          </Button>
-        )}
       </div>
     </div>
   )
