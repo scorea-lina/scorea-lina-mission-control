@@ -1080,6 +1080,17 @@ const migrations: Migration[] = [
       db.exec(`CREATE INDEX IF NOT EXISTS idx_api_keys_workspace_id ON api_keys(workspace_id)`)
       db.exec(`CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix)`)
     }
+  },
+  {
+    id: '036_recurring_tasks_index',
+    up(db: Database.Database) {
+      // Index to efficiently find recurring task templates
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_tasks_recurring
+        ON tasks(workspace_id)
+        WHERE json_extract(metadata, '$.recurrence.enabled') = 1
+      `)
+    }
   }
 ]
 

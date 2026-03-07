@@ -667,6 +667,16 @@ export function TaskBoardPanel() {
                           {task.title}
                         </h4>
                         <div className="flex items-center gap-1.5 shrink-0">
+                          {task.metadata?.recurrence?.enabled && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 font-mono" title={task.metadata.recurrence.natural_text || task.metadata.recurrence.cron_expr}>
+                              RECURRING
+                            </span>
+                          )}
+                          {task.metadata?.recurrence?.parent_task_id && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400/70 font-mono" title={`Spawned from task #${task.metadata.recurrence.parent_task_id}`}>
+                              SPAWNED
+                            </span>
+                          )}
                           {task.ticket_ref && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/15 text-primary font-mono">
                               {task.ticket_ref}
@@ -787,6 +797,9 @@ export function TaskBoardPanel() {
           </div>
         ))}
       </div>
+
+      {/* Claude Code Tasks */}
+      <ClaudeCodeTasksSection />
 
       {/* Task Detail Modal */}
       {selectedTask && !editingTask && (
@@ -1327,6 +1340,84 @@ function TaskDetailModal({
   )
 }
 
+// Claude Code Tasks Section — read-only bridge
+function ClaudeCodeTasksSection() {
+  const [expanded, setExpanded] = useState(false)
+  const [data, setData] = useState<{ teams: any[]; tasks: any[] }>({ teams: [], tasks: [] })
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    if (!expanded || loaded) return
+    fetch('/api/claude-tasks')
+      .then(r => r.json())
+      .then(d => { setData(d); setLoaded(true) })
+      .catch(() => setLoaded(true))
+  }, [expanded, loaded])
+
+  const tasksByTeam = data.tasks.reduce<Record<string, any[]>>((acc, t) => {
+    (acc[t.teamName] ||= []).push(t)
+    return acc
+  }, {})
+
+  const statusColor = (s: string) =>
+    s === 'completed' ? 'text-green-400' :
+    s === 'in_progress' ? 'text-blue-400' :
+    s === 'blocked' ? 'text-red-400' :
+    'text-muted-foreground'
+
+  return (
+    <div className="mt-4 border border-border rounded-lg overflow-hidden">
+      <button
+        onClick={() => setExpanded(prev => !prev)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-card hover:bg-secondary/50 transition-colors text-left"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-foreground">Claude Code Tasks</span>
+          {data.tasks.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400">{data.tasks.length}</span>
+          )}
+        </div>
+        <span className="text-muted-foreground text-xs">{expanded ? 'Collapse' : 'Expand'}</span>
+      </button>
+      {expanded && (
+        <div className="p-4 border-t border-border space-y-4">
+          {!loaded ? (
+            <div className="text-sm text-muted-foreground">Loading...</div>
+          ) : data.tasks.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No Claude Code team tasks found in ~/.claude/tasks/</div>
+          ) : (
+            Object.entries(tasksByTeam).map(([team, tasks]) => (
+              <div key={team}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-foreground">{team}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">{tasks.length} tasks</span>
+                  {data.teams.find(t => t.name === team)?.members?.length > 0 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {data.teams.find(t => t.name === team).members.map((m: any) => m.name).join(', ')}
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  {tasks.map((task: any) => (
+                    <div key={task.id} className="flex items-center gap-3 px-3 py-2 rounded bg-surface-1 border border-border text-sm">
+                      <span className={`text-[10px] font-mono ${statusColor(task.status)}`}>{task.status}</span>
+                      <span className="text-foreground flex-1 truncate">{task.subject}</span>
+                      {task.owner && <span className="text-[10px] text-muted-foreground">{task.owner}</span>}
+                      {task.blockedBy?.length > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400">blocked</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Create Task Modal Component (placeholder)
 function CreateTaskModal({ 
   agents, 
@@ -1347,12 +1438,47 @@ function CreateTaskModal({
     assigned_to: '',
     tags: '',
   })
+  const [isRecurring, setIsRecurring] = useState(false)
+  const [scheduleInput, setScheduleInput] = useState('')
+  const [parsedSchedule, setParsedSchedule] = useState<{ cronExpr: string; humanReadable: string } | null>(null)
+  const [scheduleError, setScheduleError] = useState('')
   const mentionTargets = useMentionTargets()
+
+  const handleScheduleChange = async (value: string) => {
+    setScheduleInput(value)
+    setScheduleError('')
+    setParsedSchedule(null)
+    if (!value.trim()) return
+    try {
+      const res = await fetch(`/api/schedule-parse?input=${encodeURIComponent(value.trim())}`)
+      const data = await res.json()
+      if (data.cronExpr) {
+        setParsedSchedule(data)
+      } else {
+        setScheduleError('Could not parse schedule')
+      }
+    } catch {
+      setScheduleError('Parse failed')
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!formData.title.trim()) return
+    if (isRecurring && !parsedSchedule) return
+
+    const metadata: Record<string, unknown> = {}
+    if (isRecurring && parsedSchedule) {
+      metadata.recurrence = {
+        cron_expr: parsedSchedule.cronExpr,
+        natural_text: parsedSchedule.humanReadable,
+        enabled: true,
+        last_spawned_at: null,
+        spawn_count: 0,
+        parent_task_id: null,
+      }
+    }
 
     try {
       const response = await fetch('/api/tasks', {
@@ -1362,7 +1488,8 @@ function CreateTaskModal({
           ...formData,
           project_id: formData.project_id ? Number(formData.project_id) : undefined,
           tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : [],
-          assigned_to: formData.assigned_to || undefined
+          assigned_to: formData.assigned_to || undefined,
+          metadata,
         })
       })
 
@@ -1474,11 +1601,50 @@ function CreateTaskModal({
                 placeholder="frontend, urgent, bug"
               />
             </div>
+
+            {/* Recurring Schedule */}
+            <div className="border border-border rounded-md p-3 space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isRecurring}
+                  onChange={(e) => {
+                    setIsRecurring(e.target.checked)
+                    if (!e.target.checked) {
+                      setParsedSchedule(null)
+                      setScheduleInput('')
+                      setScheduleError('')
+                    }
+                  }}
+                  className="rounded border-border"
+                />
+                <span className="text-sm text-foreground">Make recurring</span>
+              </label>
+              {isRecurring && (
+                <div>
+                  <input
+                    type="text"
+                    value={scheduleInput}
+                    onChange={(e) => handleScheduleChange(e.target.value)}
+                    className="w-full bg-surface-1 text-foreground border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                    placeholder='e.g. "every morning at 9am" or "every 2 hours"'
+                  />
+                  {parsedSchedule && (
+                    <p className="text-xs text-cyan-400 mt-1">
+                      {parsedSchedule.humanReadable} <span className="text-muted-foreground font-mono">({parsedSchedule.cronExpr})</span>
+                    </p>
+                  )}
+                  {scheduleError && (
+                    <p className="text-xs text-red-400 mt-1">{scheduleError}. Try: "daily at 9am", "every 2 hours", "weekly on monday"</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-          
+
           <div className="flex gap-3 mt-6">
-            <Button type="submit" className="flex-1">
-              Create Task
+            <Button type="submit" className="flex-1" disabled={isRecurring && !parsedSchedule}>
+              {isRecurring ? 'Create Recurring Task' : 'Create Task'}
             </Button>
             <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
               Cancel
