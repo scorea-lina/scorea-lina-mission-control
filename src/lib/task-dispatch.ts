@@ -16,9 +16,10 @@ interface DispatchableTask {
   ticket_prefix: string | null
   project_ticket_no: number | null
   project_id: number | null
+  tags?: string[]
 }
 
-function buildTaskPrompt(task: DispatchableTask): string {
+function buildTaskPrompt(task: DispatchableTask, rejectionFeedback?: string | null): string {
   const ticket = task.ticket_prefix && task.project_ticket_no
     ? `${task.ticket_prefix}-${String(task.project_ticket_no).padStart(3, '0')}`
     : `TASK-${task.id}`
@@ -30,12 +31,34 @@ function buildTaskPrompt(task: DispatchableTask): string {
     `Priority: ${task.priority}`,
   ]
 
+  if (task.tags && task.tags.length > 0) {
+    lines.push(`Tags: ${task.tags.join(', ')}`)
+  }
+
   if (task.description) {
     lines.push('', task.description)
   }
 
+  if (rejectionFeedback) {
+    lines.push('', '## Previous Review Feedback', rejectionFeedback, '', 'Please address this feedback in your response.')
+  }
+
   lines.push('', 'Complete this task and provide your response. Be concise and actionable.')
   return lines.join('\n')
+}
+
+/** Extract first valid JSON object from raw stdout (handles surrounding text/warnings). */
+function parseGatewayJson(raw: string): any | null {
+  const trimmed = String(raw || '').trim()
+  if (!trimmed) return null
+  const start = trimmed.indexOf('{')
+  const end = trimmed.lastIndexOf('}')
+  if (start < 0 || end < start) return null
+  try {
+    return JSON.parse(trimmed.slice(start, end + 1))
+  } catch {
+    return null
+  }
 }
 
 interface AgentResponseParsed {
@@ -160,12 +183,30 @@ export async function runAegisReviews(): Promise<{ ok: boolean; message: string 
       const prompt = buildReviewPrompt(task)
       // Use the assigned agent or fall back to a default reviewer agent
       const reviewAgent = task.assigned_to || 'jarv'
-      const result = await runOpenClaw(
-        ['agent', '--agent', reviewAgent, '--message', prompt, '--local', '--json', '--timeout', '90'],
-        { timeoutMs: 100_000 }
-      )
 
-      const agentResponse = parseAgentResponse(result.stdout)
+      const invokeParams = {
+        message: prompt,
+        agentId: reviewAgent,
+        idempotencyKey: `aegis-review-${task.id}-${Date.now()}`,
+        deliver: false,
+      }
+      const invokeResult = await runOpenClaw(
+        ['gateway', 'call', 'agent', '--timeout', '10000', '--params', JSON.stringify(invokeParams), '--json'],
+        { timeoutMs: 12_000 }
+      )
+      const acceptedPayload = parseGatewayJson(invokeResult.stdout)
+        ?? parseGatewayJson(String((invokeResult as any)?.stderr || ''))
+      const runId = acceptedPayload?.runId
+      if (!runId) throw new Error('Gateway did not return a runId for Aegis review')
+
+      const waitResult = await runOpenClaw(
+        ['gateway', 'call', 'agent.wait', '--timeout', '120000', '--params', JSON.stringify({ runId, timeoutMs: 115_000 }), '--json'],
+        { timeoutMs: 125_000 }
+      )
+      const waitPayload = parseGatewayJson(waitResult.stdout)
+      const agentResponse = parseAgentResponse(
+        waitPayload?.result ? JSON.stringify(waitPayload.result) : waitResult.stdout
+      )
       if (!agentResponse.text) {
         throw new Error('Aegis review returned empty response')
       }
@@ -260,10 +301,17 @@ export async function dispatchAssignedTasks(): Promise<{ ok: boolean; message: s
       CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END ASC,
       t.created_at ASC
     LIMIT 3
-  `).all() as DispatchableTask[]
+  `).all() as (DispatchableTask & { tags?: string })[]
 
   if (tasks.length === 0) {
     return { ok: true, message: 'No assigned tasks to dispatch' }
+  }
+
+  // Parse JSON tags column
+  for (const task of tasks) {
+    if (typeof task.tags === 'string') {
+      try { task.tags = JSON.parse(task.tags as string) } catch { task.tags = undefined }
+    }
   }
 
   const results: Array<{ id: number; success: boolean; error?: string }> = []
@@ -291,13 +339,46 @@ export async function dispatchAssignedTasks(): Promise<{ ok: boolean; message: s
     )
 
     try {
-      const prompt = buildTaskPrompt(task)
-      const result = await runOpenClaw(
-        ['agent', '--agent', task.agent_name, '--message', prompt, '--local', '--json', '--timeout', '120'],
-        { timeoutMs: 130_000 }
-      )
+      // Check for previous Aegis rejection feedback
+      const rejectionRow = db.prepare(`
+        SELECT content FROM comments
+        WHERE task_id = ? AND author = 'aegis' AND content LIKE 'Quality Review Rejected:%'
+        ORDER BY created_at DESC LIMIT 1
+      `).get(task.id) as { content: string } | undefined
+      const rejectionFeedback = rejectionRow?.content?.replace(/^Quality Review Rejected:\n?/, '') || null
 
-      const agentResponse = parseAgentResponse(result.stdout)
+      const prompt = buildTaskPrompt(task, rejectionFeedback)
+
+      // Step 1: Invoke via gateway
+      const invokeParams = {
+        message: prompt,
+        agentId: task.agent_name,
+        idempotencyKey: `task-dispatch-${task.id}-${Date.now()}`,
+        deliver: false,
+      }
+      const invokeResult = await runOpenClaw(
+        ['gateway', 'call', 'agent', '--timeout', '10000', '--params', JSON.stringify(invokeParams), '--json'],
+        { timeoutMs: 12_000 }
+      )
+      const acceptedPayload = parseGatewayJson(invokeResult.stdout)
+        ?? parseGatewayJson(String((invokeResult as any)?.stderr || ''))
+      const runId = acceptedPayload?.runId
+      if (!runId) throw new Error('Gateway did not return a runId for task dispatch')
+
+      // Step 2: Wait for completion
+      const waitResult = await runOpenClaw(
+        ['gateway', 'call', 'agent.wait', '--timeout', '120000', '--params', JSON.stringify({ runId, timeoutMs: 115_000 }), '--json'],
+        { timeoutMs: 125_000 }
+      )
+      const waitPayload = parseGatewayJson(waitResult.stdout)
+
+      const agentResponse = parseAgentResponse(
+        waitPayload?.result ? JSON.stringify(waitPayload.result) : waitResult.stdout
+      )
+      // Capture sessionId from the wait payload if not in the parsed response
+      if (!agentResponse.sessionId && waitPayload?.sessionId) {
+        agentResponse.sessionId = waitPayload.sessionId
+      }
 
       if (!agentResponse.text) {
         throw new Error('Agent returned empty response')

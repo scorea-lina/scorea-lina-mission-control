@@ -291,7 +291,7 @@ export function HeaderBar() {
   }
 
   return (
-    <header role="banner" aria-label="Application header" className="h-14 bg-card/80 backdrop-blur-sm border-b border-border px-3 md:px-4 shrink-0">
+    <header role="banner" aria-label="Application header" className="relative z-50 h-14 bg-card/80 backdrop-blur-sm border-b border-border px-3 md:px-4 shrink-0">
       <div className="h-full flex items-center gap-2 md:gap-3">
         {/* Left: Page title + context */}
         <div className="flex min-w-0 items-center gap-2.5 shrink-0">

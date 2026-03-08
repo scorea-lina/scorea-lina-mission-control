@@ -13,6 +13,7 @@ import { AgentAvatar } from '@/components/ui/agent-avatar'
 import { MarkdownRenderer } from '@/components/markdown-renderer'
 import { Button } from '@/components/ui/button'
 import { ProjectManagerModal } from '@/components/modals/project-manager-modal'
+import { SessionMessage, shouldShowTimestamp, type SessionTranscriptMessage } from '@/components/chat/session-message'
 
 const log = createClientLogger('TaskBoard')
 
@@ -1016,7 +1017,7 @@ function TaskDetailModal({
   onDelete: () => void
 }) {
   const router = useRouter()
-  const { currentUser, setConversations, setActiveConversation, conversations } = useMissionControl()
+  const { currentUser } = useMissionControl()
   const commentAuthor = currentUser?.username || 'system'
   const resolvedProjectName =
     task.project_name ||
@@ -1032,7 +1033,7 @@ function TaskDetailModal({
   const [reviewNotes, setReviewNotes] = useState('')
   const [reviewError, setReviewError] = useState<string | null>(null)
   const mentionTargets = useMentionTargets()
-  const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'quality'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'quality' | 'session'>('details')
   const [reviewer, setReviewer] = useState('aegis')
 
   const fetchReviews = useCallback(async () => {
@@ -1271,6 +1272,21 @@ function TaskDetailModal({
                 {tab === 'details' ? 'Details' : tab === 'comments' ? 'Comments' : 'Quality Review'}
               </Button>
             ))}
+            {task.metadata?.dispatch_session_id && (
+              <Button
+                role="tab"
+                size="sm"
+                variant={activeTab === 'session' ? 'default' : 'secondary'}
+                aria-selected={activeTab === 'session'}
+                aria-controls="tabpanel-session"
+                onClick={() => setActiveTab('session')}
+              >
+                Session
+                {task.status === 'in_progress' && (
+                  <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+                )}
+              </Button>
+            )}
           </div>
 
           {activeTab === 'details' && (
@@ -1364,34 +1380,7 @@ function TaskDetailModal({
                     <Button
                       variant="secondary"
                       size="sm"
-                      onClick={() => {
-                        const sessionId = task.metadata.dispatch_session_id
-                        const convId = `session:claude-code:${sessionId}`
-                        // Add conversation entry if not already present
-                        if (!conversations.find(c => c.id === convId)) {
-                          setConversations([
-                            ...conversations,
-                            {
-                              id: convId,
-                              name: `${task.assigned_to || 'Agent'} • Task #${task.id}`,
-                              kind: 'claude-code',
-                              source: 'session',
-                              session: {
-                                sessionId,
-                                sessionKind: 'claude-code',
-                                displayName: `${task.assigned_to || 'Agent'} • Task #${task.id}`,
-                                active: task.status === 'in_progress',
-                              },
-                              participants: [],
-                              unreadCount: 0,
-                              updatedAt: Math.floor(Date.now() / 1000),
-                            },
-                          ])
-                        }
-                        setActiveConversation(convId)
-                        onClose()
-                        router.push('/chat')
-                      }}
+                      onClick={() => setActiveTab('session')}
                       className="font-mono text-xs"
                     >
                       View Session {task.metadata.dispatch_session_id.slice(0, 8)}...
@@ -1535,8 +1524,105 @@ function TaskDetailModal({
               </form>
             </div>
           )}
+
+          {activeTab === 'session' && task.metadata?.dispatch_session_id && (
+            <div id="tabpanel-session" role="tabpanel" aria-label="Session" className="mt-4">
+              <TaskSessionFeed
+                sessionId={task.metadata.dispatch_session_id}
+                agentName={task.assigned_to}
+                isLive={task.status === 'in_progress'}
+              />
+            </div>
+          )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function TaskSessionFeed({ sessionId, agentName, isLive }: { sessionId: string; agentName?: string; isLive: boolean }) {
+  const [messages, setMessages] = useState<SessionTranscriptMessage[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const prevCountRef = useRef(0)
+
+  const fetchTranscript = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/sessions/transcript?kind=claude-code&id=${encodeURIComponent(sessionId)}&limit=100`)
+      if (!res.ok) throw new Error(`Failed to fetch transcript: ${res.status}`)
+      const data = await res.json()
+      setMessages(data.messages || [])
+      setError(null)
+    } catch (err: any) {
+      setError(err.message || 'Failed to load session transcript')
+    } finally {
+      setLoading(false)
+    }
+  }, [sessionId])
+
+  // Initial fetch
+  useEffect(() => { fetchTranscript() }, [fetchTranscript])
+
+  // Auto-refresh when live
+  useEffect(() => {
+    if (!isLive) return
+    const interval = setInterval(fetchTranscript, 5000)
+    return () => clearInterval(interval)
+  }, [isLive, fetchTranscript])
+
+  // Auto-scroll on new messages
+  useEffect(() => {
+    if (messages.length > prevCountRef.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+    prevCountRef.current = messages.length
+  }, [messages.length])
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {agentName && (
+            <span className="flex items-center gap-1.5">
+              <AgentAvatar name={agentName} size="xs" />
+              <span className="font-medium text-foreground">{agentName}</span>
+            </span>
+          )}
+          <span className="font-mono text-muted-foreground/50">{sessionId.slice(0, 12)}...</span>
+          {isLive && (
+            <span className="flex items-center gap-1 text-green-400">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+              Live
+            </span>
+          )}
+        </div>
+        <Button variant="link" size="xs" onClick={fetchTranscript} className="text-blue-400 hover:text-blue-300">
+          Refresh
+        </Button>
+      </div>
+
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-2 rounded-md text-xs">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-muted-foreground text-sm py-4 text-center">Loading transcript...</div>
+      ) : messages.length === 0 ? (
+        <div className="text-muted-foreground/50 text-sm py-4 text-center">No messages in this session yet.</div>
+      ) : (
+        <div ref={scrollRef} className="max-h-[50vh] overflow-y-auto space-y-0.5 rounded border border-border/30 bg-black/10 p-2">
+          {messages.map((msg, idx) => (
+            <SessionMessage
+              key={idx}
+              message={msg}
+              showTimestamp={shouldShowTimestamp(msg, messages[idx - 1])}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
