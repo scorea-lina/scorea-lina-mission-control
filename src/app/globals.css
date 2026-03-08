@@ -784,6 +784,18 @@
   background-size: 100% 100%, 40px 40px, 40px 40px, 40px 40px;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-converge-left,
+  .animate-converge-right {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+  .animate-converge-burst {
+    animation: none !important;
+    opacity: 0.6 !important;
+  }
+}
+
 .terminal-bg {
   background-image:
     radial-gradient(ellipse 50% 25% at 50% 0%, hsl(120 100% 50% / 0.04), transparent),

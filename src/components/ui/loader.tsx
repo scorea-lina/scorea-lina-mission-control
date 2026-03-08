@@ -2,6 +2,46 @@
 
 import { APP_VERSION } from '@/lib/version'
 
+function OpenClawMark({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Left talon */}
+      <path
+        d="M14 36c-2-8 0-16 6-22 3-3 6-4.5 10-5"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        fill="currentColor"
+        fillOpacity="0.06"
+      />
+      {/* Right talon (mirrored) */}
+      <path
+        d="M34 36c2-8 0-16-6-22-3-3-6-4.5-10-5"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        fill="currentColor"
+        fillOpacity="0.06"
+      />
+      {/* Center dot */}
+      <circle cx="24" cy="28" r="2.5" fill="currentColor" fillOpacity="0.8" />
+    </svg>
+  )
+}
+
+function ClaudeMark({ className, style }: { className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg className={className} style={style} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Vertical spoke */}
+      <line x1="24" y1="8" x2="24" y2="40" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      {/* 60-degree spoke */}
+      <line x1="10.14" y1="32" x2="37.86" y2="16" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      {/* 120-degree spoke */}
+      <line x1="10.14" y1="16" x2="37.86" y2="32" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 interface InitStep {
   key: string
   label: string
@@ -53,25 +93,26 @@ function PageLoader({ steps }: { steps?: InitStep[] }) {
       className={`flex items-center justify-center min-h-screen bg-background void-bg transition-opacity duration-300 ${allDone ? 'opacity-0' : 'opacity-100'}`}
     >
       <div className="flex flex-col items-center gap-8 w-64">
-        {/* Logo with glow halos */}
-        <div className="relative flex items-center justify-center">
-          {/* Outer glow halo */}
+        {/* Converging logo pair */}
+        <div className="relative flex items-center justify-center h-20">
+          {/* Center glow burst (fires after logos arrive) */}
+          <div className="absolute w-24 h-24 rounded-full bg-primary/15 blur-2xl opacity-0 animate-converge-burst" />
+          {/* Ambient glow (starts after entrance) */}
           <div
             className="absolute w-28 h-28 rounded-full bg-primary/8 blur-2xl animate-glow-pulse"
-            style={{ animationDelay: '0s' }}
+            style={{ animationDelay: '1.4s' }}
           />
-          {/* Inner glow halo */}
-          <div
-            className="absolute w-20 h-20 rounded-full bg-primary/12 blur-xl animate-glow-pulse"
-            style={{ animationDelay: '1.5s' }}
-          />
-          {/* Logo container */}
-          <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-surface-1 border border-border/50 shadow-lg shadow-primary/5 void-border-glow animate-float">
-            <img
-              src="/brand/mc-logo-256.png"
-              alt="Mission Control logo"
-              className="w-full h-full object-cover"
-            />
+          {/* Logo pair with post-converge float */}
+          <div className="animate-float" style={{ animationDelay: '1.4s' }}>
+            <div className="flex items-center gap-3">
+              <div className="opacity-0 animate-converge-left">
+                <OpenClawMark className="w-10 h-10 text-primary" />
+              </div>
+              <div className="w-1 h-1 rounded-full bg-primary opacity-0 animate-converge-burst" />
+              <div className="opacity-0 animate-converge-right">
+                <ClaudeMark className="w-10 h-10" style={{ color: 'hsl(25, 95%, 53%)' }} />
+              </div>
+            </div>
           </div>
         </div>
 

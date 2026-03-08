@@ -93,6 +93,9 @@ module.exports = {
         'pulse-dot': 'pulse-dot 2s ease-in-out infinite',
         'glow-pulse': 'glowPulse 3s ease-in-out infinite',
         'float': 'float 6s ease-in-out infinite',
+        'converge-left': 'convergeLeft 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'converge-right': 'convergeRight 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'converge-burst': 'convergeBurst 0.5s ease-out 0.9s forwards',
         'grid-flow': 'gridFlow 20s linear infinite',
         'edge-glow': 'edgeGlow 2s ease-in-out infinite',
       },
@@ -112,6 +115,19 @@ module.exports = {
         edgeGlow: {
           '0%, 100%': { opacity: '0.4' },
           '50%': { opacity: '1' },
+        },
+        convergeLeft: {
+          '0%': { transform: 'translateX(-40px)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' },
+        },
+        convergeRight: {
+          '0%': { transform: 'translateX(40px)', opacity: '0' },
+          '100%': { transform: 'translateX(0)', opacity: '1' },
+        },
+        convergeBurst: {
+          '0%': { transform: 'scale(0)', opacity: '0' },
+          '60%': { transform: 'scale(1.2)', opacity: '1' },
+          '100%': { transform: 'scale(1)', opacity: '0.6' },
         },
       },
     },
