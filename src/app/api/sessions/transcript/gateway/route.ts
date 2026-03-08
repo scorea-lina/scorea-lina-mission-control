@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import { requireRole } from '@/lib/auth'
 import { config } from '@/lib/config'
 import { logger } from '@/lib/logger'
 
-const GATEWAY_BASE = `http://${config.gatewayHost}:${config.gatewayPort}`
-
 /**
  * GET /api/sessions/transcript/gateway?key=<session-key>&limit=50
  *
- * Fetches the message history for a gateway session by calling the
- * OpenClaw gateway HTTP API: GET /api/sessions/{key}/messages
+ * Reads the JSONL transcript file for a gateway session directly from disk.
+ * OpenClaw stores session transcripts at:
+ *   {OPENCLAW_STATE_DIR}/agents/{agent}/sessions/{sessionId}.jsonl
+ *
+ * The session key (e.g. "agent:jarv:cron:task-name") is used to look up
+ * the sessionId from the agent's sessions.json, then the JSONL file is read.
  */
 export async function GET(request: NextRequest) {
   const auth = requireRole(request, 'viewer')
@@ -23,40 +27,63 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'key is required' }, { status: 400 })
   }
 
+  const stateDir = config.openclawStateDir
+  if (!stateDir) {
+    return NextResponse.json({ messages: [], source: 'gateway', error: 'OPENCLAW_STATE_DIR not configured' })
+  }
+
   try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 8000)
-
-    const encodedKey = encodeURIComponent(sessionKey)
-    const res = await fetch(
-      `${GATEWAY_BASE}/api/sessions/${encodedKey}/messages?limit=${limit}`,
-      { signal: controller.signal }
-    )
-    clearTimeout(timer)
-
-    if (!res.ok) {
-      // Gateway might not support this endpoint yet — return empty gracefully
-      if (res.status === 404) {
-        return NextResponse.json({ messages: [], source: 'gateway', note: 'Session messages endpoint not available on this gateway version' })
-      }
-      const text = await res.text().catch(() => '')
-      logger.warn({ status: res.status, body: text }, 'Gateway session messages fetch failed')
-      return NextResponse.json({ messages: [], source: 'gateway', error: `Gateway returned ${res.status}` })
+    // Extract agent name from session key (e.g. "agent:jarv:main" -> "jarv")
+    const agentName = extractAgentName(sessionKey)
+    if (!agentName) {
+      return NextResponse.json({ messages: [], source: 'gateway', error: 'Could not determine agent from session key' })
     }
 
-    const data = await res.json()
+    // Look up the sessionId from the agent's sessions.json
+    const sessionsFile = path.join(stateDir, 'agents', agentName, 'sessions', 'sessions.json')
+    if (!existsSync(sessionsFile)) {
+      return NextResponse.json({ messages: [], source: 'gateway', error: 'Agent sessions file not found' })
+    }
 
-    // Normalize gateway message format to our transcript format
-    const messages = normalizeGatewayMessages(data, limit)
+    let sessionsData: Record<string, any>
+    try {
+      sessionsData = JSON.parse(readFileSync(sessionsFile, 'utf-8'))
+    } catch {
+      return NextResponse.json({ messages: [], source: 'gateway', error: 'Could not parse sessions.json' })
+    }
+
+    const sessionEntry = sessionsData[sessionKey]
+    if (!sessionEntry?.sessionId) {
+      return NextResponse.json({ messages: [], source: 'gateway', error: 'Session not found in sessions.json' })
+    }
+
+    const sessionId = sessionEntry.sessionId
+    const jsonlPath = path.join(stateDir, 'agents', agentName, 'sessions', `${sessionId}.jsonl`)
+    if (!existsSync(jsonlPath)) {
+      return NextResponse.json({ messages: [], source: 'gateway', error: 'Session JSONL file not found' })
+    }
+
+    // Read and parse the JSONL file
+    const raw = readFileSync(jsonlPath, 'utf-8')
+    const messages = parseJsonlTranscript(raw, limit)
 
     return NextResponse.json({ messages, source: 'gateway' })
   } catch (err: any) {
-    if (err?.name === 'AbortError') {
-      return NextResponse.json({ messages: [], source: 'gateway', error: 'Gateway timeout' })
-    }
-    logger.warn({ err }, 'Gateway session transcript fetch failed')
-    return NextResponse.json({ messages: [], source: 'gateway', error: 'Gateway unreachable' })
+    logger.warn({ err, sessionKey }, 'Gateway session transcript read failed')
+    return NextResponse.json({ messages: [], source: 'gateway', error: 'Failed to read session transcript' })
   }
+}
+
+function extractAgentName(sessionKey: string): string | null {
+  // Session keys follow patterns like:
+  //   "agent:jarv:main"
+  //   "agent:jarv:cron:task-name"
+  //   "agent:jarv:telegram:direct:12345"
+  const parts = sessionKey.split(':')
+  if (parts.length >= 2 && parts[0] === 'agent') {
+    return parts[1]
+  }
+  return null
 }
 
 type MessageContentPart =
@@ -71,36 +98,38 @@ interface TranscriptMessage {
   timestamp?: string
 }
 
-function normalizeGatewayMessages(data: any, limit: number): TranscriptMessage[] {
-  // The gateway may return messages in various formats.
-  // Try common structures: { messages: [...] }, [...], { history: [...] }
-  let rawMessages: any[] = []
-  if (Array.isArray(data)) {
-    rawMessages = data
-  } else if (Array.isArray(data?.messages)) {
-    rawMessages = data.messages
-  } else if (Array.isArray(data?.history)) {
-    rawMessages = data.history
-  } else if (Array.isArray(data?.transcript)) {
-    rawMessages = data.transcript
-  }
-
+/**
+ * Parse OpenClaw JSONL transcript format.
+ *
+ * Each line is a JSON object. We care about entries with type: "message"
+ * which contain { message: { role, content } } in Claude API format.
+ */
+function parseJsonlTranscript(raw: string, limit: number): TranscriptMessage[] {
+  const lines = raw.split('\n').filter(Boolean)
   const out: TranscriptMessage[] = []
 
-  for (const msg of rawMessages) {
-    if (!msg || typeof msg !== 'object') continue
+  for (const line of lines) {
+    let entry: any
+    try {
+      entry = JSON.parse(line)
+    } catch {
+      continue
+    }
 
+    // Only process message entries
+    if (entry.type !== 'message' || !entry.message) continue
+
+    const msg = entry.message
     const role = msg.role === 'assistant' ? 'assistant' as const
       : msg.role === 'system' ? 'system' as const
       : 'user' as const
 
     const parts: MessageContentPart[] = []
-    const ts = typeof msg.timestamp === 'string' ? msg.timestamp
-      : typeof msg.created_at === 'string' ? msg.created_at
-      : typeof msg.ts === 'string' ? msg.ts
+    const ts = typeof entry.timestamp === 'string' ? entry.timestamp
+      : typeof msg.timestamp === 'string' ? msg.timestamp
       : undefined
 
-    // Simple string content
+    // String content
     if (typeof msg.content === 'string' && msg.content.trim()) {
       parts.push({ type: 'text', text: msg.content.trim().slice(0, 8000) })
     }
@@ -133,14 +162,6 @@ function normalizeGatewayMessages(data: any, limit: number): TranscriptMessage[]
           }
         }
       }
-    }
-    // Simple text field
-    else if (typeof msg.text === 'string' && msg.text.trim()) {
-      parts.push({ type: 'text', text: msg.text.trim().slice(0, 8000) })
-    }
-    // Message field
-    else if (typeof msg.message === 'string' && msg.message.trim()) {
-      parts.push({ type: 'text', text: msg.message.trim().slice(0, 8000) })
     }
 
     if (parts.length > 0) {
