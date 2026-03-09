@@ -55,7 +55,7 @@ const subscriptionDropdowns: Record<string, { label: string; value: string }[]> 
 }
 
 export function SettingsPanel() {
-  const { currentUser } = useMissionControl()
+  const { currentUser, setShowOnboarding } = useMissionControl()
   const navigateToPanel = useNavigateToPanel()
   const [settings, setSettings] = useState<Setting[]>([])
   const [grouped, setGrouped] = useState<Record<string, Setting[]>>({})
@@ -78,6 +78,9 @@ export function SettingsPanel() {
   const [showSecurityScan, setShowSecurityScan] = useState(false)
   const [hookProfile, setHookProfile] = useState<string>('standard')
   const [hookProfileSaving, setHookProfileSaving] = useState(false)
+
+  // Replay onboarding state
+  const [replayingOnboarding, setReplayingOnboarding] = useState(false)
 
   // Backup state
   const [mcBackupRunning, setMcBackupRunning] = useState(false)
@@ -305,27 +308,12 @@ export function SettingsPanel() {
       {/* Station Setup */}
       {currentUser?.role === 'admin' && (
         <div className="space-y-3">
+          {/* Security Scan */}
           <div className="flex items-center gap-3 p-3 bg-surface-1/50 border border-border/30 rounded-lg">
             <div className="flex-1">
-              <p className="text-xs font-medium">Station Setup</p>
-              <p className="text-2xs text-muted-foreground">Re-run the setup wizard or scan your security posture</p>
+              <p className="text-xs font-medium">Security</p>
+              <p className="text-2xs text-muted-foreground">Scan your station security posture</p>
             </div>
-            <Button
-              variant="outline"
-              size="xs"
-              className="text-2xs"
-              onClick={async () => {
-                await fetch('/api/onboarding', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ action: 'reset' }),
-                })
-                const { useMissionControl: getStore } = await import('@/store')
-                getStore.getState().setShowOnboarding(true)
-              }}
-            >
-              Re-run Setup Wizard
-            </Button>
             <Button
               variant="outline"
               size="xs"
@@ -394,6 +382,43 @@ export function SettingsPanel() {
               }}
             >
               {gwBackupRunning ? 'Backing up...' : 'Backup Gateway State'}
+            </Button>
+          </div>
+
+          {/* Replay Onboarding */}
+          <div className="flex items-center gap-3 p-3 bg-surface-1/50 border border-border/30 rounded-lg">
+            <div className="flex-1">
+              <p className="text-xs font-medium">Onboarding</p>
+              <p className="text-2xs text-muted-foreground">Replay the setup wizard and reset the dashboard checklist</p>
+            </div>
+            <Button
+              variant="outline"
+              size="xs"
+              className="text-2xs"
+              disabled={replayingOnboarding}
+              onClick={async () => {
+                setReplayingOnboarding(true)
+                try {
+                  await fetch('/api/onboarding', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'reset' }),
+                  })
+                  await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ settings: { 'onboarding.checklist_dismissed': 'false' } }),
+                  })
+                  setShowOnboarding(true)
+                  showFeedback(true, 'Onboarding reset — wizard will appear on next page load')
+                } catch {
+                  showFeedback(false, 'Failed to reset onboarding')
+                } finally {
+                  setReplayingOnboarding(false)
+                }
+              }}
+            >
+              {replayingOnboarding ? 'Resetting...' : 'Replay Onboarding'}
             </Button>
           </div>
         </div>

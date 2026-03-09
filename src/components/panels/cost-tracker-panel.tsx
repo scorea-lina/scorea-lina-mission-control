@@ -277,9 +277,12 @@ function OverviewView({
   if (!stats) {
     return (
       <div className="text-center text-muted-foreground py-12">
-        <div className="text-lg mb-2">No usage data available</div>
-        <div className="text-sm">Token usage will appear here once agents start running</div>
-        <Button onClick={onRefresh} className="mt-4">Refresh</Button>
+        <div className="text-lg mb-2">No usage data yet</div>
+        <div className="text-sm max-w-sm mx-auto">
+          Usage data appears as agents run sessions and consume tokens.
+          Start a session or dock an agent to begin tracking costs.
+        </div>
+        <Button onClick={onRefresh} variant="outline" size="sm" className="mt-4 text-xs">Refresh</Button>
       </div>
     )
   }

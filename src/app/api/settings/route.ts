@@ -47,6 +47,7 @@ const settingDefinitions: Record<string, { category: string; description: string
   'onboarding.completed_at': { category: 'onboarding', description: 'Timestamp when onboarding was completed', default: '' },
   'onboarding.skipped': { category: 'onboarding', description: 'Whether onboarding was skipped', default: 'false' },
   'onboarding.completed_steps': { category: 'onboarding', description: 'JSON array of completed step IDs', default: '[]' },
+  'onboarding.checklist_dismissed': { category: 'onboarding', description: 'Whether the onboarding checklist has been dismissed', default: 'false' },
 }
 
 /**

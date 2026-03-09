@@ -1671,7 +1671,10 @@ function ClaudeCodeTasksSection() {
           {!loaded ? (
             <div className="text-sm text-muted-foreground">Loading...</div>
           ) : data.tasks.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No Claude Code team tasks found in ~/.claude/tasks/</div>
+            <div className="text-sm text-muted-foreground text-center py-8">
+              <p className="font-medium">No team tasks found</p>
+              <p className="text-xs mt-1 text-muted-foreground/70">Tasks appear here when Claude Code agents work with team task lists in ~/.claude/tasks/</p>
+            </div>
           ) : (
             Object.entries(tasksByTeam).map(([team, tasks]) => (
               <div key={team}>

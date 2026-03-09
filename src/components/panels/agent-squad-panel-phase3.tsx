@@ -13,6 +13,11 @@ import {
   TasksTab,
   ActivityTab,
   ConfigTab,
+  FilesTab,
+  ToolsTab,
+  ChannelsTab,
+  CronTab,
+  ModelsTab,
   CreateAgentModal
 } from './agent-detail-tabs'
 import { formatModelName, buildTaskStatParts } from '@/lib/agent-card-helpers'
@@ -370,8 +375,11 @@ export function AgentSquadPanelPhase3() {
                 <path d="M2 14c0-3.3 2.7-6 6-6s6 2.7 6 6" />
               </svg>
             </div>
-            <p className="text-sm font-medium">No agents found</p>
-            <p className="text-xs mt-1">Add your first agent to get started</p>
+            <p className="text-sm font-medium">No agents docked</p>
+            <p className="text-xs text-muted-foreground/70 mt-1 max-w-xs text-center">
+              Agents register via the API and gain persistent memory, task management, and coordinated workflows.
+            </p>
+            <p className="text-2xs text-muted-foreground/40 mt-3 font-mono">POST /api/agents with X-Api-Key header</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

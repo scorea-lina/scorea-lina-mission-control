@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Loader } from '@/components/ui/loader'
 import { useMissionControl } from '@/store'
 import { useNavigateToPanel } from '@/lib/navigation'
-import { SecurityScanCard } from './security-scan-card'
 
 interface StepInfo {
   id: string
@@ -36,9 +35,6 @@ const STEPS = [
   { id: 'welcome', title: 'Welcome' },
   { id: 'interface-mode', title: 'Interface' },
   { id: 'credentials', title: 'Credentials' },
-  { id: 'gateway', title: 'Agent Setup' },
-  { id: 'security', title: 'Security Scan' },
-  { id: 'next-steps', title: 'Get Started' },
 ]
 
 /** Mode-aware Tailwind classes — local=amber, gateway=cyan */
@@ -57,6 +53,7 @@ export function OnboardingWizard() {
   const [state, setState] = useState<OnboardingState | null>(null)
   const [credentialStatus, setCredentialStatus] = useState<{ authOk: boolean; apiKeyOk: boolean } | null>(null)
   const [closing, setClosing] = useState(false)
+  const [completionMessage, setCompletionMessage] = useState(false)
   const [capabilities, setCapabilities] = useState<SystemCapabilities>({
     claudeSessions: 0,
     agentCount: 0,
@@ -116,13 +113,16 @@ export function OnboardingWizard() {
   }, [])
 
   const finish = useCallback(async () => {
-    setClosing(true)
+    setCompletionMessage(true)
     await fetch('/api/onboarding', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'complete' }),
     }).catch(() => {})
-    setTimeout(() => setShowOnboarding(false), 300)
+    setTimeout(() => {
+      setClosing(true)
+      setTimeout(() => setShowOnboarding(false), 300)
+    }, 1200)
   }, [setShowOnboarding])
 
   const skip = useCallback(async () => {
@@ -172,7 +172,7 @@ export function OnboardingWizard() {
         <div className="h-0.5 bg-surface-2">
           <div
             className={`h-full transition-all duration-500 ${isGateway ? 'bg-void-cyan' : 'bg-void-amber'}`}
-            style={{ width: `${((step + 1) / totalSteps) * 100}%` }}
+            style={{ width: `${((step + 1) / totalSteps) * 85 + 15}%` }}
           />
         </div>
 
@@ -196,11 +196,17 @@ export function OnboardingWizard() {
         </div>
 
         {/* Content */}
-        <div className={`px-6 py-4 min-h-[320px] flex flex-col transition-all duration-150 ${
+        <div className={`relative px-6 py-4 min-h-[320px] flex flex-col transition-all duration-150 ${
           animating
             ? `opacity-0 ${slideDir === 'left' ? '-translate-x-3' : 'translate-x-3'}`
             : 'opacity-100 translate-x-0'
         }`}>
+          {completionMessage && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/95 backdrop-blur-sm">
+              <div className={`text-2xl font-bold mb-2 ${isGateway ? 'text-void-cyan' : 'text-void-amber'}`}>Station Online</div>
+              <p className="text-sm text-muted-foreground">Your station is ready for agents.</p>
+            </div>
+          )}
           {step === 0 && (
             <StepWelcome isGateway={isGateway} capabilities={capabilities} onNext={goNext} onSkip={skip} />
           )}
@@ -208,16 +214,7 @@ export function OnboardingWizard() {
             <StepInterfaceMode isGateway={isGateway} onNext={goNext} onBack={goBack} />
           )}
           {step === 2 && (
-            <StepCredentials isGateway={isGateway} status={credentialStatus} onNext={goNext} onBack={goBack} navigateToPanel={navigateToPanel} onClose={() => setShowOnboarding(false)} />
-          )}
-          {step === 3 && (
-            <StepGateway isGateway={isGateway} capabilities={capabilities} onNext={goNext} onBack={goBack} navigateToPanel={navigateToPanel} onClose={() => setShowOnboarding(false)} />
-          )}
-          {step === 4 && (
-            <StepSecurity isGateway={isGateway} onNext={goNext} onBack={goBack} />
-          )}
-          {step === 5 && (
-            <StepNextSteps isGateway={isGateway} onFinish={finish} onBack={goBack} navigateToPanel={navigateToPanel} onClose={() => setShowOnboarding(false)} />
+            <StepCredentials isGateway={isGateway} status={credentialStatus} onFinish={finish} onBack={goBack} navigateToPanel={navigateToPanel} onClose={() => setShowOnboarding(false)} />
           )}
         </div>
       </div>
@@ -442,14 +439,14 @@ function StepInterfaceMode({ isGateway, onNext, onBack }: {
 function StepCredentials({
   isGateway,
   status,
-  onNext,
+  onFinish,
   onBack,
   navigateToPanel,
   onClose,
 }: {
   isGateway: boolean
   status: { authOk: boolean; apiKeyOk: boolean } | null
-  onNext: () => void
+  onFinish: () => void
   onBack: () => void
   navigateToPanel: (panel: string) => void
   onClose: () => void
@@ -514,238 +511,11 @@ function StepCredentials({
 
       <div className="flex items-center justify-between pt-4 border-t border-border/30">
         <Button variant="ghost" size="sm" onClick={onBack} className="text-xs text-muted-foreground">Back</Button>
-        <Button onClick={onNext} size="sm" className={`${mc.bgBtn} ${mc.text} border ${mc.border} ${mc.hoverBg}`}>
-          {allGood ? 'Continue' : 'Continue anyway'}
-        </Button>
-      </div>
-    </>
-  )
-}
-
-function StepGateway({
-  isGateway,
-  capabilities,
-  onNext,
-  onBack,
-  navigateToPanel,
-  onClose,
-}: {
-  isGateway: boolean
-  capabilities: SystemCapabilities
-  onNext: () => void
-  onBack: () => void
-  navigateToPanel: (panel: string) => void
-  onClose: () => void
-}) {
-  const mc = modeColors(isGateway)
-
-  return (
-    <>
-      <div className="flex-1">
-        <h2 className="text-lg font-semibold mb-1">What Agents Get When They Dock</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          {isGateway
-            ? 'Gateway online — full station capabilities active. Agents docking here get the complete feature set.'
-            : 'Solo station — monitoring is active. Connect a gateway to unlock multi-agent orchestration.'}
-        </p>
-
-        <div className="grid grid-cols-2 gap-3">
-          {/* Local features column */}
-          <div className={`relative p-3 rounded-lg border space-y-1.5 ${
-            !isGateway
-              ? 'border-void-amber/40 bg-void-amber/5 border-l-2 border-l-void-amber'
-              : 'border-border/20 bg-surface-1/30 opacity-50'
-          }`}>
-            {!isGateway && (
-              <span className="absolute -top-2 right-2 text-2xs px-1.5 py-0.5 rounded-full bg-void-amber/20 text-void-amber border border-void-amber/30">
-                Active
-              </span>
-            )}
-            <p className={`text-xs font-medium ${!isGateway ? 'text-void-amber' : 'text-muted-foreground'}`}>
-              Solo Station
-            </p>
-            <ul className={`text-2xs space-y-1 ${!isGateway ? 'text-muted-foreground' : 'text-muted-foreground/60'}`}>
-              <li>Session telemetry — agents report token usage and cost in real-time</li>
-              <li>Task board — assign and track work items</li>
-              <li>Session history — full activity log</li>
-              <li>Security scanning — audit your station</li>
-              <li>Diagnostics — system health</li>
-            </ul>
-          </div>
-
-          {/* Gateway features column */}
-          <div className={`relative p-3 rounded-lg border space-y-1.5 ${
-            isGateway
-              ? 'border-void-cyan/40 bg-void-cyan/5 border-l-2 border-l-void-cyan'
-              : 'border-border/20 bg-surface-1/30 opacity-50 pointer-events-none'
-          }`}>
-            {isGateway && (
-              <span className="absolute -top-2 right-2 text-2xs px-1.5 py-0.5 rounded-full bg-void-cyan/20 text-void-cyan border border-void-cyan/30">
-                Active
-              </span>
-            )}
-            {!isGateway && (
-              <span className="absolute -top-2 right-2 text-2xs px-1.5 py-0.5 rounded-full bg-surface-1 border border-border/30 text-muted-foreground/50">
-                Locked
-              </span>
-            )}
-            <p className={`text-xs font-medium ${isGateway ? 'text-void-cyan' : 'text-muted-foreground'}`}>
-              Fleet Station
-            </p>
-            <ul className={`text-2xs space-y-1 ${isGateway ? 'text-muted-foreground' : 'text-muted-foreground/60'}`}>
-              <li>Agent coordination — route tasks between docked agents</li>
-              <li>Persistent memory — agents retain context across sessions</li>
-              <li>Skills library — extend agent capabilities on demand</li>
-              <li>Inter-agent chat — agents communicate directly</li>
-              <li>Webhooks — trigger external systems on agent events</li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="mt-3">
-          {isGateway && capabilities.agentCount === 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs border-void-cyan/30 text-void-cyan hover:bg-void-cyan/10"
-              onClick={() => { onClose(); navigateToPanel('agents') }}
-            >
-              Dock your first agent
-            </Button>
-          )}
-          {!isGateway && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={() => {
-                if (capabilities.claudeSessions > 0) {
-                  onClose(); navigateToPanel('claude')
-                } else {
-                  onClose(); navigateToPanel('gateways')
-                }
-              }}
-            >
-              {capabilities.claudeSessions > 0 ? 'View active sessions' : 'Set up fleet gateway'}
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between pt-4 border-t border-border/30">
-        <Button variant="ghost" size="sm" onClick={onBack} className="text-xs text-muted-foreground">Back</Button>
-        <Button onClick={onNext} size="sm" className={`${mc.bgBtn} ${mc.text} border ${mc.border} ${mc.hoverBg}`}>
-          Continue
-        </Button>
-      </div>
-    </>
-  )
-}
-
-function StepSecurity({ isGateway, onNext, onBack }: { isGateway: boolean; onNext: () => void; onBack: () => void }) {
-  const mc = modeColors(isGateway)
-
-  return (
-    <>
-      <div className="flex-1 overflow-y-auto">
-        <h2 className="text-lg font-semibold mb-1">Station Security Sweep</h2>
-        <p className="text-sm text-muted-foreground mb-3">
-          Docked agents run autonomously — a compromised station means compromised agents. This scan checks five systems:
-        </p>
-        <div className="flex flex-wrap gap-1.5 mb-3">
-          {['Credentials', 'Network', 'OpenClaw config', 'Runtime', 'OS hardening'].map(area => (
-            <span key={area} className="text-2xs px-2 py-0.5 rounded-full bg-surface-1 border border-border/30 text-muted-foreground">{area}</span>
-          ))}
-        </div>
-        <SecurityScanCard autoScan />
-      </div>
-
-      <div className="flex items-center justify-between pt-4 border-t border-border/30">
-        <Button variant="ghost" size="sm" onClick={onBack} className="text-xs text-muted-foreground">Back</Button>
-        <Button onClick={onNext} size="sm" className={`${mc.bgBtn} ${mc.text} border ${mc.border} ${mc.hoverBg}`}>
-          Continue
-        </Button>
-      </div>
-    </>
-  )
-}
-
-function StepNextSteps({
-  isGateway,
-  onFinish,
-  onBack,
-  navigateToPanel,
-  onClose,
-}: {
-  isGateway: boolean
-  onFinish: () => void
-  onBack: () => void
-  navigateToPanel: (panel: string) => void
-  onClose: () => void
-}) {
-  const mc = modeColors(isGateway)
-  const goTo = (panel: string) => { onClose(); navigateToPanel(panel) }
-
-  const primaryAction = isGateway
-    ? { label: 'Dock your first agent', panel: 'agents', desc: 'Register agents through the console or let them self-dock via POST /api/agents with your docking key' }
-    : { label: 'View docked sessions', panel: 'claude', desc: 'See active Claude Code sessions, their output, token usage, and cost in real-time' }
-
-  const secondaryActions = [
-    { label: 'Explore the task board', panel: 'tasks', desc: 'Kanban board to create, assign, and track work items across your agents and team' },
-    { label: 'Browse the skills hangar', panel: 'skills', desc: 'Pre-built capabilities your agents gain on install' },
-    { label: 'Configure webhooks', panel: 'webhooks', desc: 'Set up outbound HTTP notifications for agent events — completions, errors, and status changes' },
-    { label: 'Configure station settings', panel: 'settings', desc: 'Manage data retention, scheduled backups, security policies, and system configuration' },
-  ]
-
-  return (
-    <>
-      <div className="flex-1">
-        <h2 className="text-lg font-semibold mb-1">Station Online</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Your station is ready for agents. Dock your first agent, or explore the systems below.
-        </p>
-
-        <div className="space-y-2">
-          {/* Primary CTA */}
-          <button
-            onClick={() => goTo(primaryAction.panel)}
-            className={`w-full flex items-start gap-3 p-3 rounded-lg border ${mc.border} ${mc.bgLight} ${mc.hoverBgLight} transition-colors text-left`}
-          >
-            <span className={`${mc.text} text-sm mt-0.5 font-mono`}>{'>'}</span>
-            <div>
-              <p className={`text-sm font-medium ${mc.text}`}>{primaryAction.label}</p>
-              <p className="text-xs text-muted-foreground">{primaryAction.desc}</p>
-            </div>
-          </button>
-
-          {/* Secondary actions */}
-          {secondaryActions.map(item => (
-            <button
-              key={item.panel}
-              onClick={() => goTo(item.panel)}
-              className={`w-full flex items-start gap-3 p-3 rounded-lg border border-border/30 ${mc.hoverBorder} hover:bg-surface-1/50 transition-colors text-left`}
-            >
-              <span className={`${mc.text} text-sm mt-0.5`}>-{'>'}</span>
-              <div>
-                <p className="text-sm font-medium">{item.label}</p>
-                <p className="text-xs text-muted-foreground">{item.desc}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        <p className="text-xs text-muted-foreground/60 mt-3 p-2 rounded-lg bg-surface-1/30 border border-border/20">
-          Tip: Agents self-dock via POST /api/agents using the X-Api-Key header.
-          Share the docking key with teammates so their agents can join your station automatically.
-        </p>
-      </div>
-
-      <div className="flex items-center justify-between pt-4 border-t border-border/30">
-        <Button variant="ghost" size="sm" onClick={onBack} className="text-xs text-muted-foreground">Back</Button>
         <Button onClick={onFinish} size="sm" className={`${mc.bgBtn} ${mc.text} border ${mc.border} ${mc.hoverBg}`}>
-          Finish Setup
+          {allGood ? 'Launch Station' : 'Launch anyway'}
         </Button>
       </div>
     </>
   )
 }
+
