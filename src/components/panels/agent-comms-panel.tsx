@@ -284,8 +284,8 @@ export function AgentCommsPanel() {
 
   // Auto-scroll to bottom when new events arrive
   useEffect(() => {
-    if (autoScroll && feedEndRef.current) {
-      feedEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    if (autoScroll && feedContainerRef.current) {
+      feedContainerRef.current.scrollTo({ top: feedContainerRef.current.scrollHeight, behavior: 'smooth' })
     }
   }, [filteredFeed.length, autoScroll])
 
@@ -490,7 +490,7 @@ export function AgentCommsPanel() {
           <Button
             onClick={() => {
               setAutoScroll(true)
-              feedEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+              feedContainerRef.current?.scrollTo({ top: feedContainerRef.current.scrollHeight, behavior: 'smooth' })
             }}
             variant="ghost"
             size="xs"
