@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { createElement, useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { NavRail } from '@/components/layout/nav-rail'
 import { HeaderBar } from '@/components/layout/header-bar'
@@ -56,6 +56,11 @@ import { useMissionControl } from '@/store'
 interface GatewaySummary {
   id: number
   is_primary: number
+}
+
+function renderPluginPanel(panelId: string) {
+  const pluginPanel = getPluginPanel(panelId)
+  return pluginPanel ? createElement(pluginPanel) : <Dashboard />
 }
 
 function isLocalHost(hostname: string): boolean {
@@ -491,9 +496,7 @@ function ContentRouter({ tab }: { tab: string }) {
     case 'chat':
       return <ChatPagePanel />
     default: {
-      const PluginPanel = getPluginPanel(tab)
-      if (PluginPanel) return <PluginPanel />
-      return <Dashboard />
+      return renderPluginPanel(tab)
     }
   }
 }

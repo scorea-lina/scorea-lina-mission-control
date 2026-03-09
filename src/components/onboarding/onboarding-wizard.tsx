@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Loader } from '@/components/ui/loader'
@@ -157,7 +158,7 @@ export function OnboardingWizard() {
     setTimeout(() => setShowOnboarding(false), 300)
   }, [setShowOnboarding])
 
-  const goNext = useCallback(() => {
+  const goNext = () => {
     const steps = state?.steps || []
     const currentId = steps[step]?.id
     if (currentId) completeStep(currentId)
@@ -167,16 +168,16 @@ export function OnboardingWizard() {
       setStep(s => Math.min(s + 1, STEPS.length - 1))
       setAnimating(false)
     }, 150)
-  }, [step, state, completeStep])
+  }
 
-  const goBack = useCallback(() => {
+  const goBack = () => {
     setSlideDir('right')
     setAnimating(true)
     setTimeout(() => {
       setStep(s => Math.max(s - 1, 0))
       setAnimating(false)
     }, 150)
-  }, [])
+  }
 
   if (!showOnboarding || !state) return null
 
@@ -259,7 +260,13 @@ function StepWelcome({ isGateway, capabilities, onNext, onSkip }: {
     <>
       <div className="flex-1 flex flex-col items-center justify-center text-center gap-4">
         <div className="w-14 h-14 rounded-xl overflow-hidden bg-surface-1 border border-border/50 flex items-center justify-center shadow-lg">
-          <img src="/brand/mc-logo-128.png" alt="Mission Control" className="w-full h-full object-cover" />
+          <Image
+            src="/brand/mc-logo-128.png"
+            alt="Mission Control"
+            width={56}
+            height={56}
+            className="w-full h-full object-cover"
+          />
         </div>
         <div>
           <h2 className="text-xl font-semibold mb-2">Welcome to Mission Control</h2>
@@ -649,4 +656,3 @@ function StepCredentials({
     </>
   )
 }
-

@@ -112,7 +112,6 @@ function scoreCategory(checks: Check[]): Category {
 // All exec calls below use only hardcoded string literals — no user input.
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line security/detect-child-process
 function tryExec(cmd: string, timeout = 5000): string | null {
   try {
     return execSync(cmd, { encoding: 'utf-8', timeout, stdio: ['pipe', 'pipe', 'pipe'] }).trim()

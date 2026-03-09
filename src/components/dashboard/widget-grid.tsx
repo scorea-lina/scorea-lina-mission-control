@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { useMissionControl } from '@/store'
 import { WIDGET_CATALOG, getDefaultLayout, getAvailableWidgets, getWidgetById } from '@/lib/dashboard-widgets'
 import { Button } from '@/components/ui/button'
@@ -59,31 +59,31 @@ export function WidgetGrid({ data }: { data: DashboardData }) {
   // Widgets not in current layout but available for this mode
   const hiddenWidgets = available.filter((w) => !validLayout.includes(w.id))
 
-  const handleDragStart = useCallback((e: React.DragEvent, widgetId: string) => {
+  const handleDragStart = (e: React.DragEvent, widgetId: string) => {
     setDragId(widgetId)
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData('text/plain', widgetId)
-  }, [])
+  }
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
-  }, [])
+  }
 
-  const handleDragEnter = useCallback((_e: React.DragEvent, widgetId: string) => {
+  const handleDragEnter = (_e: React.DragEvent, widgetId: string) => {
     dragCounter.current++
     setDragOverId(widgetId)
-  }, [])
+  }
 
-  const handleDragLeave = useCallback(() => {
+  const handleDragLeave = () => {
     dragCounter.current--
     if (dragCounter.current <= 0) {
       setDragOverId(null)
       dragCounter.current = 0
     }
-  }, [])
+  }
 
-  const handleDrop = useCallback((e: React.DragEvent, targetId: string) => {
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault()
     dragCounter.current = 0
     setDragOverId(null)
@@ -92,43 +92,56 @@ export function WidgetGrid({ data }: { data: DashboardData }) {
     const sourceId = e.dataTransfer.getData('text/plain')
     if (!sourceId || sourceId === targetId) return
 
-    const newLayout = [...validLayout]
-    const sourceIdx = newLayout.indexOf(sourceId)
-    const targetIdx = newLayout.indexOf(targetId)
+    setDashboardLayout((currentLayout) => {
+      const activeLayout = currentLayout ?? defaults
+      const nextLayout = activeLayout.filter((id) => {
+        const widget = getWidgetById(id)
+        return !!widget && widget.modes.includes(mode)
+      })
+      const sourceIdx = nextLayout.indexOf(sourceId)
+      const targetIdx = nextLayout.indexOf(targetId)
 
-    if (sourceIdx === -1) {
-      // Adding from hidden widgets — insert at target position
-      newLayout.splice(targetIdx + 1, 0, sourceId)
-    } else if (targetIdx === -1) {
-      return
-    } else {
-      // Reorder
-      newLayout.splice(sourceIdx, 1)
-      newLayout.splice(targetIdx, 0, sourceId)
-    }
+      if (sourceIdx === -1) {
+        if (targetIdx === -1) return nextLayout
+        nextLayout.splice(targetIdx + 1, 0, sourceId)
+        return nextLayout
+      }
 
-    setDashboardLayout(newLayout)
-  }, [validLayout, setDashboardLayout])
+      if (targetIdx === -1) return nextLayout
 
-  const handleDragEnd = useCallback(() => {
+      nextLayout.splice(sourceIdx, 1)
+      nextLayout.splice(targetIdx, 0, sourceId)
+      return nextLayout
+    })
+  }
+
+  const handleDragEnd = () => {
     setDragId(null)
     setDragOverId(null)
     dragCounter.current = 0
-  }, [])
+  }
 
-  const addWidget = useCallback((widgetId: string) => {
-    const newLayout = [...validLayout, widgetId]
-    setDashboardLayout(newLayout)
-  }, [validLayout, setDashboardLayout])
+  const addWidget = (widgetId: string) => {
+    setDashboardLayout((currentLayout) => {
+      const activeLayout = currentLayout ?? defaults
+      const nextLayout = activeLayout.filter((id) => {
+        const widget = getWidgetById(id)
+        return !!widget && widget.modes.includes(mode)
+      })
+      return nextLayout.includes(widgetId) ? nextLayout : [...nextLayout, widgetId]
+    })
+  }
 
-  const removeWidget = useCallback((widgetId: string) => {
-    const newLayout = validLayout.filter((id) => id !== widgetId)
-    setDashboardLayout(newLayout)
-  }, [validLayout, setDashboardLayout])
+  const removeWidget = (widgetId: string) => {
+    setDashboardLayout((currentLayout) => {
+      const activeLayout = currentLayout ?? defaults
+      return activeLayout.filter((id) => id !== widgetId)
+    })
+  }
 
-  const resetToDefaults = useCallback(() => {
+  const resetToDefaults = () => {
     setDashboardLayout(null)
-  }, [setDashboardLayout])
+  }
 
   // Group widgets into rows based on their sizes
   // full-width widgets get their own row; sm/md/lg widgets flow in a 12-col grid

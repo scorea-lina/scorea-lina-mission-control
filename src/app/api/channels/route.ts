@@ -13,8 +13,23 @@ function gatewayHeaders(): Record<string, string> {
   return headers
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type GatewayData = any
+type GatewayData = unknown
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined
+}
 
 interface ChannelStatus {
   configured: boolean
@@ -61,63 +76,72 @@ interface ChannelsSnapshot {
 }
 
 function transformGatewayChannels(data: GatewayData): ChannelsSnapshot {
-  const rawChannels = data.channels || {}
-  const rawAccounts = data.channelAccounts || {}
-  const channelLabels = data.channelLabels || {}
-  const order: string[] = data.channelOrder || Object.keys(rawChannels)
+  const parsed = asRecord(data)
+  const rawChannels = asRecord(parsed?.channels) ?? {}
+  const rawAccounts = asRecord(parsed?.channelAccounts) ?? {}
+  const channelLabels = asRecord(parsed?.channelLabels)
+  const order = Array.isArray(parsed?.channelOrder)
+    ? parsed.channelOrder.filter((value): value is string => typeof value === 'string')
+    : Object.keys(rawChannels)
 
   const channels: Record<string, ChannelStatus> = {}
   const channelAccounts: Record<string, ChannelAccount[]> = {}
+  const labels: Record<string, string> = Object.fromEntries(
+    Object.entries(channelLabels ?? {}).flatMap(([key, value]) => typeof value === 'string' ? [[key, value]] : [])
+  )
 
   for (const key of order) {
-    const ch = rawChannels[key]
+    const ch = asRecord(rawChannels[key])
     if (!ch) continue
 
     channels[key] = {
-      configured: !!ch.configured,
-      linked: ch.linked ?? undefined,
-      running: !!ch.running,
-      connected: ch.connected ?? undefined,
-      lastConnectedAt: ch.lastConnectedAt ?? null,
-      lastMessageAt: ch.lastMessageAt ?? null,
-      lastStartAt: ch.lastStartAt ?? null,
-      lastError: ch.lastError ?? null,
-      authAgeMs: ch.authAgeMs ?? null,
-      mode: ch.mode ?? null,
-      baseUrl: ch.baseUrl ?? null,
-      publicKey: ch.publicKey ?? null,
+      configured: !!readBoolean(ch.configured),
+      linked: readBoolean(ch.linked),
+      running: !!readBoolean(ch.running),
+      connected: readBoolean(ch.connected),
+      lastConnectedAt: readNumber(ch.lastConnectedAt) ?? null,
+      lastMessageAt: readNumber(ch.lastMessageAt) ?? null,
+      lastStartAt: readNumber(ch.lastStartAt) ?? null,
+      lastError: readString(ch.lastError) ?? null,
+      authAgeMs: readNumber(ch.authAgeMs) ?? null,
+      mode: readString(ch.mode) ?? null,
+      baseUrl: readString(ch.baseUrl) ?? null,
+      publicKey: readString(ch.publicKey) ?? null,
       probe: ch.probe ?? null,
       profile: ch.profile ?? null,
     }
 
     const accounts = rawAccounts[key] || []
     const accountEntries = (Array.isArray(accounts) ? accounts : Object.values(accounts)) as GatewayData[]
-    channelAccounts[key] = accountEntries.map((acct: GatewayData) => ({
-      accountId: acct.accountId || 'default',
-      name: acct.name ?? null,
-      configured: acct.configured ?? null,
-      linked: acct.linked ?? null,
-      running: acct.running ?? null,
-      connected: acct.connected ?? null,
-      lastConnectedAt: acct.lastConnectedAt ?? null,
-      lastInboundAt: acct.lastInboundAt ?? null,
-      lastOutboundAt: acct.lastOutboundAt ?? null,
-      lastError: acct.lastError ?? null,
-      lastStartAt: acct.lastStartAt ?? null,
-      mode: acct.mode ?? null,
-      probe: acct.probe ?? null,
-      publicKey: acct.publicKey ?? null,
-      profile: acct.profile ?? null,
-    }))
+    channelAccounts[key] = accountEntries.map((acct) => {
+      const parsedAccount = asRecord(acct) ?? {}
+      return {
+        accountId: readString(parsedAccount.accountId) ?? 'default',
+        name: readString(parsedAccount.name) ?? null,
+        configured: readBoolean(parsedAccount.configured) ?? null,
+        linked: readBoolean(parsedAccount.linked) ?? null,
+        running: readBoolean(parsedAccount.running) ?? null,
+        connected: readBoolean(parsedAccount.connected) ?? null,
+        lastConnectedAt: readNumber(parsedAccount.lastConnectedAt) ?? null,
+        lastInboundAt: readNumber(parsedAccount.lastInboundAt) ?? null,
+        lastOutboundAt: readNumber(parsedAccount.lastOutboundAt) ?? null,
+        lastError: readString(parsedAccount.lastError) ?? null,
+        lastStartAt: readNumber(parsedAccount.lastStartAt) ?? null,
+        mode: readString(parsedAccount.mode) ?? null,
+        probe: parsedAccount.probe ?? null,
+        publicKey: readString(parsedAccount.publicKey) ?? null,
+        profile: parsedAccount.profile ?? null,
+      }
+    })
   }
 
   return {
     channels,
     channelAccounts,
     channelOrder: order,
-    channelLabels,
+    channelLabels: labels,
     connected: true,
-    updatedAt: data.ts,
+    updatedAt: readNumber(parsed?.ts),
   }
 }
 

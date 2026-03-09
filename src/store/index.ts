@@ -6,6 +6,7 @@ import { MODEL_CATALOG } from '@/lib/models'
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue | undefined }
+type DashboardLayoutUpdater = string[] | null | ((current: string[] | null) => string[] | null)
 
 // Enhanced types for Mission Control
 export interface Session {
@@ -566,7 +567,7 @@ interface MissionControlStore {
 
   // Dashboard Layout
   dashboardLayout: string[] | null
-  setDashboardLayout: (layout: string[] | null) => void
+  setDashboardLayout: (layout: DashboardLayoutUpdater) => void
 
   // Interface Mode (essential vs full)
   interfaceMode: 'essential' | 'full'
@@ -888,7 +889,11 @@ export const useMissionControl = create<MissionControlStore>()(
         return raw ? JSON.parse(raw) as string[] : null
       } catch { return null }
     })(),
-    setDashboardLayout: (layout) => {
+    setDashboardLayout: (layoutOrUpdater) => {
+      const currentLayout = get().dashboardLayout
+      const layout = typeof layoutOrUpdater === 'function'
+        ? layoutOrUpdater(currentLayout)
+        : layoutOrUpdater
       try {
         if (layout) {
           localStorage.setItem('mc-dashboard-layout', JSON.stringify(layout))

@@ -63,6 +63,17 @@ interface ChannelsSnapshot {
   updatedAt?: number
 }
 
+type ActionResult = {
+  ok?: boolean
+  error?: string
+  message?: string
+  qrDataUrl?: string
+  connected?: boolean
+  persisted?: boolean
+  merged?: NostrProfile
+  imported?: NostrProfile
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -138,6 +149,41 @@ function channelIsActive(status: ChannelStatus | undefined, accounts: ChannelAcc
   if (!status) return false
   if (status.configured || status.running || status.connected) return true
   return accounts.some(a => a.configured || a.running || a.connected)
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+}
+
+function readActionResult(value: unknown): ActionResult | null {
+  const record = asRecord(value)
+  if (!record) return null
+
+  const readProfile = (candidate: unknown): NostrProfile | undefined => {
+    const profile = asRecord(candidate)
+    if (!profile) return undefined
+    return {
+      name: typeof profile.name === 'string' ? profile.name : null,
+      displayName: typeof profile.displayName === 'string' ? profile.displayName : null,
+      about: typeof profile.about === 'string' ? profile.about : null,
+      picture: typeof profile.picture === 'string' ? profile.picture : null,
+      banner: typeof profile.banner === 'string' ? profile.banner : null,
+      website: typeof profile.website === 'string' ? profile.website : null,
+      nip05: typeof profile.nip05 === 'string' ? profile.nip05 : null,
+      lud16: typeof profile.lud16 === 'string' ? profile.lud16 : null,
+    }
+  }
+
+  return {
+    ok: typeof record.ok === 'boolean' ? record.ok : undefined,
+    error: typeof record.error === 'string' ? record.error : undefined,
+    message: typeof record.message === 'string' ? record.message : undefined,
+    qrDataUrl: typeof record.qrDataUrl === 'string' ? record.qrDataUrl : undefined,
+    connected: typeof record.connected === 'boolean' ? record.connected : undefined,
+    persisted: typeof record.persisted === 'boolean' ? record.persisted : undefined,
+    merged: readProfile(record.merged),
+    imported: readProfile(record.imported),
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -230,7 +276,7 @@ function WhatsAppCard({ status, accounts, onProbe, probing, onAction, actionBusy
   const handleLink = async (force: boolean) => {
     setMessage(null)
     setQrDataUrl(null)
-    const res = await onAction('whatsapp-link', { force })
+    const res = readActionResult(await onAction('whatsapp-link', { force }))
     if (res) {
       setMessage(res.message ?? null)
       setQrDataUrl(res.qrDataUrl ?? null)
@@ -239,7 +285,7 @@ function WhatsAppCard({ status, accounts, onProbe, probing, onAction, actionBusy
 
   const handleWait = async () => {
     setMessage(null)
-    const res = await onAction('whatsapp-wait', {})
+    const res = readActionResult(await onAction('whatsapp-wait', {}))
     if (res) {
       setMessage(res.message ?? null)
       if (res.connected) setQrDataUrl(null)
@@ -402,7 +448,7 @@ function NostrCard({ status, accounts, onProbe, probing, onAction, actionBusy }:
     setProfileSaving(true)
     setProfileMessage(null)
     const accountId = primaryAccount?.accountId ?? 'default'
-    const res = await onAction('nostr-profile-save', { accountId, profile: profileForm })
+    const res = readActionResult(await onAction('nostr-profile-save', { accountId, profile: profileForm }))
     setProfileSaving(false)
     if (res?.ok !== false && res?.persisted) {
       setProfileMessage('Profile published to relays.')
@@ -416,7 +462,7 @@ function NostrCard({ status, accounts, onProbe, probing, onAction, actionBusy }:
     setProfileSaving(true)
     setProfileMessage(null)
     const accountId = primaryAccount?.accountId ?? 'default'
-    const res = await onAction('nostr-profile-import', { accountId })
+    const res = readActionResult(await onAction('nostr-profile-import', { accountId }))
     setProfileSaving(false)
     if (res?.merged || res?.imported) {
       const merged = res.merged ?? res.imported
@@ -581,8 +627,7 @@ interface PlatformCardProps {
   accounts: ChannelAccount[]
   onProbe: () => void
   probing: boolean
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  onAction: (action: string, params: Record<string, unknown>) => Promise<any>
+  onAction: (action: string, params: Record<string, unknown>) => Promise<unknown>
   actionBusy: boolean
 }
 
@@ -637,8 +682,7 @@ export function ChannelsPanel() {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleAction = async (action: string, params: Record<string, unknown>): Promise<any> => {
+  const handleAction = async (action: string, params: Record<string, unknown>): Promise<unknown> => {
     setActionBusy(true)
     try {
       const res = await fetch('/api/channels', {
