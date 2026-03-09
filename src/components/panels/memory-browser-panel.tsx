@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
+import { Loader } from '@/components/ui/loader'
 import { useMissionControl } from '@/store'
 import { createClientLogger } from '@/lib/client-logger'
 import dynamic from 'next/dynamic'
@@ -525,7 +526,7 @@ export function MemoryBrowserPanel() {
             )}
             <div className="flex-1 overflow-y-auto py-1">
               {isLoading ? (
-                <div className="flex items-center justify-center h-20"><div className="animate-spin rounded-full h-4 w-4 border-b border-primary" /></div>
+                <div className="flex items-center justify-center h-20"><Loader variant="inline" /></div>
               ) : filteredFiles.length === 0 ? (
                 <div className="text-center text-muted-foreground/40 text-xs font-mono py-8">no files</div>
               ) : renderTree(filteredFiles)}
@@ -580,7 +581,7 @@ export function MemoryBrowserPanel() {
                 )}
                 <div className="flex-1 overflow-auto">
                   {isLoading ? (
-                    <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-4 w-4 border-b border-primary" /></div>
+                    <div className="flex items-center justify-center h-full"><Loader variant="inline" /></div>
                   ) : memoryContent != null && selectedMemoryFile ? (
                     <div className="p-6 max-w-3xl">
                       {isEditing ? (
@@ -673,8 +674,7 @@ function HealthView({ report, isLoading, onRefresh }: { report: HealthReport | n
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
-        <span className="ml-3 text-muted-foreground text-sm font-mono">Running diagnostics...</span>
+        <Loader variant="inline" label="Running diagnostics" />
       </div>
     )
   }
@@ -747,9 +747,7 @@ function PipelineView({ result, mocGroups, isRunning, onRunAction, onNavigate }:
         </button>
       </div>
       {isRunning && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground font-mono">
-          <div className="animate-spin rounded-full h-4 w-4 border-b border-primary" />Processing...
-        </div>
+        <Loader variant="inline" label="Processing" />
       )}
       {result && (
         <div className="bg-[hsl(var(--surface-1))] border border-border/50 rounded-lg p-4">

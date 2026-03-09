@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
+import { Loader } from '@/components/ui/loader'
 import { useMissionControl, CronJob } from '@/store'
 import { createClientLogger } from '@/lib/client-logger'
 const log = createClientLogger('CronManagement')
@@ -856,8 +857,7 @@ export function CronManagementPanel() {
 
           {isLoading ? (
             <div className="flex items-center justify-center h-32">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-              <span className="ml-3 text-muted-foreground">Loading jobs...</span>
+              <Loader variant="inline" label="Loading jobs" />
             </div>
           ) : cronJobs.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">No cron jobs found</div>

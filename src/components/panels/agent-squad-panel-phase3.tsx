@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
+import { Loader } from '@/components/ui/loader'
 import { useSmartPoll } from '@/lib/use-smart-poll'
 import { createClientLogger } from '@/lib/client-logger'
 import { AgentAvatar } from '@/components/ui/agent-avatar'
@@ -268,12 +269,7 @@ export function AgentSquadPanelPhase3() {
   }, {} as Record<string, number>)
 
   if (loading && agents.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        <span className="ml-2 text-muted-foreground">Loading agents...</span>
-      </div>
-    )
+    return <Loader variant="panel" label="Loading agents" />
   }
 
   return (

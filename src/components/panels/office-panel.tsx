@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import type { MouseEvent, WheelEvent } from 'react'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
+import { Loader } from '@/components/ui/loader'
 import { useMissionControl, Agent } from '@/store'
 import { buildOfficeLayout } from '@/lib/office-layout'
 
@@ -1503,14 +1504,7 @@ export function OfficePanel() {
   }, [categoryGroups, orgSegmentMode, roleGroups, statusGroups])
 
   if ((loading || (isLocalMode && localBootstrapping)) && visibleDisplayAgents.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-        <span className="ml-3 text-muted-foreground">
-          {isLocalMode ? 'Scanning local sessions...' : 'Loading office...'}
-        </span>
-      </div>
-    )
+    return <Loader variant="panel" label={isLocalMode ? 'Scanning local sessions...' : 'Loading office...'} />
   }
 
   return (

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
+import { Loader } from '@/components/ui/loader'
 import { useMissionControl } from '@/store'
 import { createClientLogger } from '@/lib/client-logger'
 import {
@@ -234,10 +235,7 @@ export function CostTrackerPanel() {
       </div>
 
       {isLoading && !usageStats ? (
-        <div className="flex items-center justify-center h-32">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-          <span className="ml-3 text-muted-foreground">Loading cost data...</span>
-        </div>
+        <Loader variant="panel" label="Loading cost data" />
       ) : view === 'overview' ? (
         <OverviewView
           stats={usageStats} trendData={trendData} agentSummary={agentSummary}

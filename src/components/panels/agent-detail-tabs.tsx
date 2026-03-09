@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
+import { Loader } from '@/components/ui/loader'
 import { createClientLogger } from '@/lib/client-logger'
 import Link from 'next/link'
 
@@ -633,11 +634,8 @@ export function TasksTab({ agent }: { agent: Agent }) {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <span className="ml-2 text-muted-foreground">Loading tasks...</span>
-        </div>
+      <div className="p-6 flex items-center justify-center py-8">
+        <Loader variant="inline" label="Loading tasks" />
       </div>
     )
   }
@@ -732,11 +730,8 @@ export function ActivityTab({ agent }: { agent: Agent }) {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <span className="ml-2 text-muted-foreground">Loading activity...</span>
-        </div>
+      <div className="p-6 flex items-center justify-center py-8">
+        <Loader variant="inline" label="Loading activity" />
       </div>
     )
   }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
+import { Loader } from '@/components/ui/loader'
 import { createClientLogger } from '@/lib/client-logger'
 import {
   PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -420,10 +421,7 @@ export function AgentCostPanel() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center h-32">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-          <span className="ml-3 text-muted-foreground">Loading agent costs...</span>
-        </div>
+        <Loader variant="panel" label="Loading agent costs" />
       ) : activeView === 'per-agent' ? (
         <PerAgentBreakdown data={byAgentData} formatCost={formatCost} formatNumber={formatNumber} onRefresh={loadData} />
       ) : !data || agents.length === 0 ? (

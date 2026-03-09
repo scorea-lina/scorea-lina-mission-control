@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
+import { Loader } from '@/components/ui/loader'
 import { useMissionControl } from '@/store'
 import { useSmartPoll } from '@/lib/use-smart-poll'
 import { useNavigateToPanel } from '@/lib/navigation'
@@ -349,10 +350,7 @@ export function SecurityAuditPanel() {
       </div>
 
       {!data ? (
-        <div className="flex items-center justify-center h-32">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-          <span className="ml-3 text-muted-foreground">Loading security data...</span>
-        </div>
+        <Loader variant="panel" label="Loading security data" />
       ) : (
         <div className="space-y-6">
           {/* Posture Score Header */}

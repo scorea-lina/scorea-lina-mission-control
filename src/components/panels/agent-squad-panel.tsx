@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
+import { Loader } from '@/components/ui/loader'
 import { createClientLogger } from '@/lib/client-logger'
 
 const log = createClientLogger('AgentSquadPanel')
@@ -137,12 +138,7 @@ export function AgentSquadPanel() {
   }, {} as Record<string, number>)
 
   if (loading && agents.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-        <span className="ml-2 text-gray-400">Loading agents...</span>
-      </div>
-    )
+    return <Loader variant="panel" label="Loading agents" />
   }
 
   return (
