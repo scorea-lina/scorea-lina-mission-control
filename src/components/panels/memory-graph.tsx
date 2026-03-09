@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { GraphCanvas, GraphCanvasRef, type Theme, type GraphNode as ReagraphNode, type GraphEdge as ReagraphEdge, type InternalGraphNode } from 'reagraph'
-import { Button } from '@/components/ui/button'
 import { useMissionControl } from '@/store'
 
 // --- Data interfaces (match API response) ---
@@ -21,35 +20,35 @@ interface AgentGraphData {
   files: AgentFileInfo[]
 }
 
-// --- Color palette ---
+// --- Obsidian-inspired palette (muted purples, warm grays) ---
 
 const AGENT_COLORS = [
-  '#22d3ee', // cyan
-  '#f59e0b', // amber
-  '#a78bfa', // violet
-  '#34d399', // mint
-  '#f87171', // crimson
-  '#60a5fa', // blue
-  '#f472b6', // pink
-  '#4ade80', // green
-  '#facc15', // yellow
-  '#c084fc', // purple
-  '#fb923c', // orange
-  '#2dd4bf', // teal
-  '#a3e635', // lime
-  '#e879f9', // fuchsia
-  '#38bdf8', // sky
-  '#818cf8', // indigo
-  '#fbbf24', // gold
+  '#b4befe', // lavender
+  '#cba6f7', // mauve
+  '#f5c2e7', // pink
+  '#89b4fa', // blue
+  '#74c7ec', // sapphire
+  '#89dceb', // sky
+  '#94e2d5', // teal
+  '#a6e3a1', // green
+  '#f9e2af', // yellow
+  '#fab387', // peach
+  '#eba0ac', // maroon
+  '#f38ba8', // red
+  '#cdd6f4', // text
+  '#bac2de', // subtext1
+  '#a6adc8', // subtext0
+  '#b4befe', // lavender2
+  '#cba6f7', // mauve2
 ]
 
 function getFileColor(filePath: string): string {
-  if (filePath.startsWith('sessions/') || filePath.includes('/sessions/')) return '#22d3ee'
-  if (filePath.startsWith('memory/') || filePath.includes('/memory/')) return '#34d399'
-  if (filePath.startsWith('knowledge') || filePath.includes('/knowledge')) return '#818cf8'
-  if (filePath.endsWith('.md')) return '#f59e0b'
-  if (filePath.endsWith('.json') || filePath.endsWith('.jsonl')) return '#a78bfa'
-  return '#60a5fa'
+  if (filePath.startsWith('sessions/') || filePath.includes('/sessions/')) return '#89dceb'
+  if (filePath.startsWith('memory/') || filePath.includes('/memory/')) return '#94e2d5'
+  if (filePath.startsWith('knowledge') || filePath.includes('/knowledge')) return '#b4befe'
+  if (filePath.endsWith('.md')) return '#f9e2af'
+  if (filePath.endsWith('.json') || filePath.endsWith('.jsonl')) return '#cba6f7'
+  return '#89b4fa'
 }
 
 function formatBytes(bytes: number): string {
@@ -60,47 +59,47 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
-// --- Obsidian-style theme ---
+// --- Obsidian graph theme ---
 
 const obsidianTheme: Theme = {
   canvas: {
-    background: '#0a0e14',
-    fog: '#0a0e14',
+    background: '#11111b',
+    fog: '#11111b',
   },
   node: {
-    fill: '#6366f1',
-    activeFill: '#a78bfa',
+    fill: '#6c7086',
+    activeFill: '#cba6f7',
     opacity: 1,
     selectedOpacity: 1,
-    inactiveOpacity: 0.08,
+    inactiveOpacity: 0.1,
     label: {
-      color: '#e2e8f0',
-      stroke: '#000000',
-      activeColor: '#ffffff',
+      color: '#cdd6f4',
+      stroke: '#11111b',
+      activeColor: '#f5f5f7',
     },
   },
   ring: {
-    fill: '#6366f1',
-    activeFill: '#a78bfa',
+    fill: '#6c7086',
+    activeFill: '#cba6f7',
   },
   edge: {
-    fill: '#334155',
-    activeFill: '#a78bfa',
-    opacity: 0.12,
-    selectedOpacity: 0.6,
+    fill: '#45475a',
+    activeFill: '#cba6f7',
+    opacity: 0.15,
+    selectedOpacity: 0.5,
     inactiveOpacity: 0.03,
     label: {
-      color: '#94a3b8',
-      activeColor: '#e2e8f0',
+      color: '#6c7086',
+      activeColor: '#cdd6f4',
     },
   },
   arrow: {
-    fill: '#334155',
-    activeFill: '#a78bfa',
+    fill: '#45475a',
+    activeFill: '#cba6f7',
   },
   lasso: {
-    background: 'rgba(99, 102, 241, 0.1)',
-    border: 'rgba(99, 102, 241, 0.3)',
+    background: 'rgba(203, 166, 247, 0.08)',
+    border: 'rgba(203, 166, 247, 0.25)',
   },
 }
 
@@ -115,6 +114,7 @@ export function MemoryGraph() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedFile, setSelectedFile] = useState<AgentFileInfo | null>(null)
   const [actives, setActives] = useState<string[]>([])
+  const [hoveredNode, setHoveredNode] = useState<{ label: string; sub?: string } | null>(null)
 
   const graphRef = useRef<GraphCanvasRef | null>(null)
 
@@ -138,7 +138,6 @@ export function MemoryGraph() {
   }, [setMemoryGraphAgents])
 
   useEffect(() => {
-    // Skip fetch if we already have cached data from a previous mount
     if (memoryGraphAgents !== null) return
     fetchData()
   }, [fetchData, memoryGraphAgents])
@@ -167,21 +166,20 @@ export function MemoryGraph() {
         nodes.push({
           id: `hub-${agent.name}`,
           label: agent.name,
-          subLabel: `${agent.totalChunks} chunks`,
           fill: color,
           size: hubSize,
         })
 
-        const maxFiles = 30
+        const maxFiles = 25
         const files = agent.files.slice(0, maxFiles)
         files.forEach((file, fi) => {
-          const fileSize = Math.max(2, Math.min(6, 1.5 + Math.sqrt(file.chunks) * 0.7))
+          const fileSize = Math.max(1.5, Math.min(5, 1 + Math.sqrt(file.chunks) * 0.6))
           const fileColor = getFileColor(file.path)
           const nodeId = `file-${agent.name}-${fi}`
 
           nodes.push({
             id: nodeId,
-            label: file.path.split('/').pop() || file.path,
+            label: '',
             fill: fileColor,
             size: fileSize,
             data: { filePath: file.path, chunks: file.chunks, textSize: file.textSize, agentName: agent.name },
@@ -206,7 +204,6 @@ export function MemoryGraph() {
       nodes.push({
         id: `hub-${agent.name}`,
         label: agent.name,
-        subLabel: `${agent.totalChunks} chunks / ${agent.totalFiles} files`,
         fill: color,
         size: hubSize,
       })
@@ -264,189 +261,233 @@ export function MemoryGraph() {
     return { graphNodes: nodes, graphEdges: edges }
   }, [agents, selectedAgent, searchQuery])
 
+  // Navigation helpers
+  const goBack = useCallback(() => {
+    setSelectedAgent('all')
+    setSelectedFile(null)
+    setSearchQuery('')
+    setActives([])
+    setHoveredNode(null)
+  }, [])
+
+  const drillInto = useCallback((agentName: string) => {
+    setSelectedAgent(agentName)
+    setSelectedFile(null)
+    setSearchQuery('')
+    setActives([])
+    setHoveredNode(null)
+  }, [])
+
   // Interaction handlers
   const handleNodeClick = useCallback((node: InternalGraphNode) => {
     const id = node.id
     if (id.startsWith('hub-') && selectedAgent === 'all') {
-      const agentName = id.replace('hub-', '')
-      setSelectedAgent(agentName)
-      setSelectedFile(null)
-      setSearchQuery('')
-      setActives([])
+      drillInto(id.replace('hub-', ''))
+    } else if (id.startsWith('hub-') && selectedAgent !== 'all') {
+      // clicking the hub in drilled-in view goes back
+      goBack()
     } else if (id.startsWith('file-') && node.data) {
       const { filePath, chunks, textSize } = node.data as { filePath: string; chunks: number; textSize: number }
       setSelectedFile({ path: filePath, chunks, textSize })
     }
-  }, [selectedAgent])
+  }, [selectedAgent, drillInto, goBack])
 
   const handleNodeHover = useCallback((node: InternalGraphNode) => {
     setActives([node.id])
-  }, [])
+    if (node.data) {
+      const d = node.data as { filePath: string; chunks: number; textSize: number; agentName: string }
+      setHoveredNode({ label: d.filePath, sub: `${d.chunks} chunks / ${formatBytes(d.textSize)}` })
+    } else if (node.id.startsWith('hub-')) {
+      const name = node.id.replace('hub-', '')
+      const agent = agents.find(a => a.name === name)
+      if (agent) {
+        setHoveredNode({ label: agent.name, sub: `${agent.totalChunks} chunks / ${agent.totalFiles} files / ${formatBytes(agent.dbSize)}` })
+      }
+    }
+  }, [agents])
 
   const handleNodeUnhover = useCallback(() => {
     setActives([])
+    setHoveredNode(null)
   }, [])
 
   const handleCanvasClick = useCallback(() => {
     setActives([])
     setSelectedFile(null)
+    setHoveredNode(null)
   }, [])
 
   // --- Render ---
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
-        <span className="ml-3 text-muted-foreground">Loading memory graph...</span>
+      <div className="flex items-center justify-center h-full" style={{ background: '#11111b' }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-[#cba6f7]/30 border-t-[#cba6f7] animate-spin" />
+          <span className="text-[#6c7086] text-sm font-mono">Loading graph...</span>
+        </div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-        <span className="text-red-400 mb-2">Failed to load memory graph</span>
-        <span className="text-sm">{error}</span>
-        <Button onClick={fetchData} className="mt-4" variant="secondary" size="sm">
+      <div className="flex flex-col items-center justify-center h-full gap-3" style={{ background: '#11111b' }}>
+        <span className="text-[#f38ba8] text-sm">{error}</span>
+        <button onClick={fetchData} className="px-3 py-1.5 text-xs rounded-md bg-[#1e1e2e] border border-[#45475a] text-[#cdd6f4] hover:border-[#cba6f7]/50 transition-colors">
           Retry
-        </Button>
+        </button>
       </div>
     )
   }
 
   if (!agents.length) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-        <span>No memory databases found</span>
-        <span className="text-xs mt-1">OpenClaw memory SQLite files not detected</span>
+      <div className="flex flex-col items-center justify-center h-full gap-2" style={{ background: '#11111b' }}>
+        <span className="text-[#6c7086] text-sm">No memory databases found</span>
+        <span className="text-[#45475a] text-xs">OpenClaw memory SQLite files not detected</span>
       </div>
     )
   }
 
-  return (
-    <div className="flex flex-col gap-4 h-full">
-      {/* Controls bar */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-muted-foreground font-mono">AGENT:</label>
-          <select
-            value={selectedAgent}
-            onChange={(e) => {
-              setSelectedAgent(e.target.value)
-              setSelectedFile(null)
-              setSearchQuery('')
-              setActives([])
-            }}
-            className="px-2 py-1 text-sm bg-surface-1 border border-border rounded-md text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
-          >
-            <option value="all">All Agents ({stats.totalAgents})</option>
-            {agents.map((a) => (
-              <option key={a.name} value={a.name}>
-                {a.name} ({a.totalChunks} chunks)
-              </option>
-            ))}
-          </select>
-        </div>
+  const activeAgent = selectedAgent !== 'all' ? agents.find(a => a.name === selectedAgent) : null
 
-        {selectedAgent !== 'all' && (
+  return (
+    <div className="relative h-full w-full overflow-hidden" style={{ background: '#11111b' }}>
+      {/* Full-bleed graph canvas */}
+      <GraphCanvas
+        ref={graphRef}
+        nodes={graphNodes}
+        edges={graphEdges}
+        theme={obsidianTheme}
+        layoutType="forceDirected2d"
+        layoutOverrides={{
+          linkDistance: selectedAgent === 'all' ? 80 : 100,
+          nodeStrength: selectedAgent === 'all' ? -60 : -80,
+        }}
+        labelType={selectedAgent === 'all' ? 'auto' : 'auto'}
+        edgeArrowPosition="none"
+        animated={true}
+        draggable={true}
+        defaultNodeSize={4}
+        minNodeSize={1.5}
+        maxNodeSize={15}
+        cameraMode="pan"
+        actives={actives}
+        onNodeClick={handleNodeClick}
+        onNodePointerOver={handleNodeHover}
+        onNodePointerOut={handleNodeUnhover}
+        onCanvasClick={handleCanvasClick}
+      />
+
+      {/* Floating breadcrumb / navigation bar (top-left) */}
+      <div className="absolute top-3 left-3 flex items-center gap-1.5 z-10">
+        <button
+          onClick={goBack}
+          className={`px-2.5 py-1 text-[11px] font-mono rounded-md backdrop-blur-xl transition-all ${
+            selectedAgent === 'all'
+              ? 'bg-[#cba6f7]/15 text-[#cba6f7] border border-[#cba6f7]/25'
+              : 'bg-[#1e1e2e]/80 text-[#6c7086] border border-[#45475a]/50 hover:text-[#cdd6f4] hover:border-[#cba6f7]/30'
+          }`}
+        >
+          all agents
+        </button>
+        {activeAgent && (
           <>
-            <Button
-              onClick={() => {
-                setSelectedAgent('all')
-                setSelectedFile(null)
-                setSearchQuery('')
-                setActives([])
-              }}
-              variant="secondary"
-              size="sm"
-            >
-              Back to Overview
-            </Button>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter files..."
-              className="px-2 py-1 text-sm bg-surface-1 border border-border rounded-md text-foreground placeholder-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50 w-48"
-            />
+            <span className="text-[#45475a] text-[10px]">/</span>
+            <span className="px-2.5 py-1 text-[11px] font-mono rounded-md bg-[#cba6f7]/15 text-[#cba6f7] border border-[#cba6f7]/25">
+              {activeAgent.name}
+            </span>
           </>
         )}
-
-        <span className="text-[10px] text-muted-foreground/50 font-mono ml-auto">
-          hover to highlight / click hub to drill in / scroll to zoom
-        </span>
       </div>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-4 gap-3">
-        <div className="bg-surface-1 border border-border rounded-md px-3 py-2">
-          <div className="text-lg font-bold text-foreground font-mono">{stats.totalAgents}</div>
-          <div className="text-xs text-muted-foreground">Agents</div>
-        </div>
-        <div className="bg-surface-1 border border-border rounded-md px-3 py-2">
-          <div className="text-lg font-bold text-foreground font-mono">{stats.totalFiles.toLocaleString()}</div>
-          <div className="text-xs text-muted-foreground">Source Files</div>
-        </div>
-        <div className="bg-surface-1 border border-border rounded-md px-3 py-2">
-          <div className="text-lg font-bold text-foreground font-mono">{stats.totalChunks.toLocaleString()}</div>
-          <div className="text-xs text-muted-foreground">Total Chunks</div>
-        </div>
-        <div className="bg-surface-1 border border-border rounded-md px-3 py-2">
-          <div className="text-lg font-bold text-foreground font-mono">{formatBytes(stats.totalSize)}</div>
-          <div className="text-xs text-muted-foreground">DB Size</div>
+      {/* Floating stats (top-right) */}
+      <div className="absolute top-3 right-3 flex items-center gap-3 z-10">
+        {selectedAgent !== 'all' && (
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="filter files..."
+            className="px-2.5 py-1 text-[11px] font-mono rounded-md bg-[#1e1e2e]/80 backdrop-blur-xl border border-[#45475a]/50 text-[#cdd6f4] placeholder-[#45475a] focus:outline-none focus:border-[#cba6f7]/40 w-36 transition-colors"
+          />
+        )}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#1e1e2e]/80 backdrop-blur-xl border border-[#45475a]/30">
+          <StatChip label="agents" value={stats.totalAgents} />
+          <Sep />
+          <StatChip label="files" value={stats.totalFiles} />
+          <Sep />
+          <StatChip label="chunks" value={stats.totalChunks} />
+          <Sep />
+          <StatChip label="size" value={formatBytes(stats.totalSize)} />
         </div>
       </div>
 
-      {/* Graph canvas */}
-      <div className="relative flex-1 min-h-0 border border-border rounded-lg overflow-hidden" style={{ minHeight: '400px' }}>
-        <GraphCanvas
-          ref={graphRef}
-          nodes={graphNodes}
-          edges={graphEdges}
-          theme={obsidianTheme}
-          layoutType="forceDirected2d"
-          layoutOverrides={{
-            linkDistance: 100,
-            nodeStrength: -80,
-          }}
-          labelType="auto"
-          edgeArrowPosition="none"
-          animated={true}
-          draggable={true}
-          defaultNodeSize={5}
-          minNodeSize={2}
-          maxNodeSize={15}
-          cameraMode="pan"
-          actives={actives}
-          onNodeClick={handleNodeClick}
-          onNodePointerOver={handleNodeHover}
-          onNodePointerOut={handleNodeUnhover}
-          onCanvasClick={handleCanvasClick}
-        />
-      </div>
-
-      {/* Selected file detail */}
-      {selectedFile && (
-        <div className="bg-surface-1 border border-border rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-foreground font-mono">{selectedFile.path}</h3>
-            <Button onClick={() => setSelectedFile(null)} variant="ghost" size="sm">
-              Close
-            </Button>
+      {/* Hover tooltip (bottom-center) */}
+      {hoveredNode && (
+        <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+          <div className="px-3 py-2 rounded-lg bg-[#1e1e2e]/90 backdrop-blur-xl border border-[#45475a]/40 shadow-2xl shadow-black/40 max-w-md">
+            <div className="text-[11px] font-mono text-[#cdd6f4] truncate">{hoveredNode.label}</div>
+            {hoveredNode.sub && (
+              <div className="text-[10px] font-mono text-[#6c7086] mt-0.5">{hoveredNode.sub}</div>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">Chunks:</span>{' '}
-              <span className="text-foreground font-mono">{selectedFile.chunks}</span>
+        </div>
+      )}
+
+      {/* Selected file detail panel (bottom-left) */}
+      {selectedFile && (
+        <div className="absolute bottom-3 left-3 z-10 max-w-sm">
+          <div className="px-4 py-3 rounded-lg bg-[#1e1e2e]/90 backdrop-blur-xl border border-[#45475a]/40 shadow-2xl shadow-black/40">
+            <div className="flex items-center justify-between gap-4 mb-2">
+              <h3 className="text-[11px] font-mono text-[#cdd6f4] truncate">{selectedFile.path}</h3>
+              <button
+                onClick={() => setSelectedFile(null)}
+                className="text-[#6c7086] hover:text-[#cdd6f4] text-xs transition-colors shrink-0"
+              >
+                x
+              </button>
             </div>
-            <div>
-              <span className="text-muted-foreground">Text Size:</span>{' '}
-              <span className="text-foreground font-mono">{formatBytes(selectedFile.textSize)}</span>
+            <div className="flex items-center gap-4 text-[10px] font-mono text-[#6c7086]">
+              <span><span className="text-[#cba6f7]">{selectedFile.chunks}</span> chunks</span>
+              <span><span className="text-[#89b4fa]">{formatBytes(selectedFile.textSize)}</span> text</span>
             </div>
           </div>
         </div>
       )}
+
+      {/* Color legend (bottom-right) */}
+      <div className="absolute bottom-3 right-3 z-10">
+        <div className="px-3 py-2 rounded-lg bg-[#1e1e2e]/80 backdrop-blur-xl border border-[#45475a]/30">
+          <div className="flex items-center gap-3 text-[9px] font-mono text-[#585b70]">
+            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#89dceb]" />sessions</span>
+            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#94e2d5]" />memory</span>
+            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#b4befe]" />knowledge</span>
+            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#f9e2af]" />.md</span>
+            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#cba6f7]" />.json</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Keyboard hint */}
+      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 text-[9px] font-mono text-[#313244] pointer-events-none select-none">
+        scroll to zoom / drag to pan / click node to drill in
+      </div>
     </div>
   )
+}
+
+function StatChip({ label, value }: { label: string; value: number | string }) {
+  const display = typeof value === 'number' ? value.toLocaleString() : value
+  return (
+    <span className="text-[10px] font-mono">
+      <span className="text-[#cdd6f4]">{display}</span>
+      <span className="text-[#585b70] ml-1">{label}</span>
+    </span>
+  )
+}
+
+function Sep() {
+  return <span className="text-[#313244]">|</span>
 }
