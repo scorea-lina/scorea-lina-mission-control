@@ -7,7 +7,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 BRANCH="${BRANCH:-$(git -C "$PROJECT_ROOT" branch --show-current)}"
 PORT="${PORT:-3000}"
-HOSTNAME_VALUE="${HOSTNAME:-0.0.0.0}"
+LISTEN_HOST="${MC_HOSTNAME:-0.0.0.0}"
 LOG_PATH="${LOG_PATH:-/tmp/mc.log}"
 VERIFY_HOST="${VERIFY_HOST:-127.0.0.1}"
 PID_FILE="${PID_FILE:-$PROJECT_ROOT/.next/standalone/server.pid}"
@@ -51,12 +51,18 @@ if [[ -f .env.local ]]; then
 fi
 set +a
 
-PORT="$PORT" HOSTNAME="$HOSTNAME_VALUE" nohup bash "$PROJECT_ROOT/scripts/start-standalone.sh" >"$LOG_PATH" 2>&1 &
+PORT="$PORT" HOSTNAME="$LISTEN_HOST" nohup bash "$PROJECT_ROOT/scripts/start-standalone.sh" >"$LOG_PATH" 2>&1 &
 new_pid=$!
 echo "$new_pid" > "$PID_FILE"
-sleep 3
 
 echo "==> verifying process and static assets"
+for _ in $(seq 1 20); do
+  if curl -fsS "http://$VERIFY_HOST:$PORT/login" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
 curl -fsS "http://$VERIFY_HOST:$PORT/login" >/dev/null
 
 css_path="$(curl -fsS "http://$VERIFY_HOST:$PORT/login" | grep -o '/_next/static/chunks/[^"]*\.css' | head -1)"
