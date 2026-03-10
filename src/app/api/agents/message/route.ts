@@ -19,7 +19,8 @@ export async function POST(request: NextRequest) {
   try {
     const result = await validateBody(request, createMessageSchema)
     if ('error' in result) return result.error
-    const { from, to, message } = result.data
+    const { to, message } = result.data
+    const from = auth.user.display_name || auth.user.username || 'system'
 
     // Scan message for injection — this gets forwarded directly to an agent
     const injectionReport = scanForInjection(message, { context: 'prompt' })
