@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireRole } from '@/lib/auth'
 import { config } from '@/lib/config'
+import { runOpenClaw } from '@/lib/command'
 import { logger } from '@/lib/logger'
 import { getDetectedGatewayToken } from '@/lib/gateway-runtime'
 
@@ -145,6 +146,17 @@ function transformGatewayChannels(data: GatewayData): ChannelsSnapshot {
   }
 }
 
+async function loadChannelsViaCli(probe = false): Promise<ChannelsSnapshot> {
+  const args = ['channels', 'status', '--json', '--timeout', '5000']
+  if (probe) args.push('--probe')
+
+  const { stdout } = await runOpenClaw(args, { timeoutMs: probe ? 20000 : 15000 })
+  return {
+    ...transformGatewayChannels(JSON.parse(stdout)),
+    connected: true,
+  }
+}
+
 async function isGatewayReachable(): Promise<boolean> {
   try {
     const controller = new AbortController()
@@ -190,14 +202,25 @@ export async function GET(request: NextRequest) {
       })
       clearTimeout(timeout)
 
+      if (!res.ok) {
+        if (res.status === 404) {
+          return NextResponse.json(await loadChannelsViaCli(true))
+        }
+        throw new Error(`Gateway channel probe failed with status ${res.status}`)
+      }
+
       const data = await res.json()
       return NextResponse.json(data)
     } catch (err) {
-      logger.warn({ err, channel }, 'Channel probe failed')
-      return NextResponse.json(
-        { ok: false, error: 'Gateway unreachable' },
-        { status: 502 },
-      )
+      try {
+        return NextResponse.json(await loadChannelsViaCli(true))
+      } catch (cliErr) {
+        logger.warn({ err, cliErr, channel }, 'Channel probe failed')
+        return NextResponse.json(
+          { ok: false, error: 'Gateway unreachable' },
+          { status: 502 },
+        )
+      }
     }
   }
 
@@ -212,18 +235,29 @@ export async function GET(request: NextRequest) {
     })
     clearTimeout(timeout)
 
+    if (!res.ok) {
+      if (res.status === 404) {
+        return NextResponse.json(await loadChannelsViaCli(false))
+      }
+      throw new Error(`Gateway channel status failed with status ${res.status}`)
+    }
+
     const data = await res.json()
     return NextResponse.json(transformGatewayChannels(data))
   } catch (err) {
-    logger.warn({ err }, 'Gateway unreachable for channel status')
-    const reachable = await isGatewayReachable()
-    return NextResponse.json({
-      channels: {},
-      channelAccounts: {},
-      channelOrder: [],
-      channelLabels: {},
-      connected: reachable,
-    } satisfies ChannelsSnapshot)
+    try {
+      return NextResponse.json(await loadChannelsViaCli(false))
+    } catch (cliErr) {
+      logger.warn({ err, cliErr }, 'Gateway unreachable for channel status')
+      const reachable = await isGatewayReachable()
+      return NextResponse.json({
+        channels: {},
+        channelAccounts: {},
+        channelOrder: [],
+        channelLabels: {},
+        connected: reachable,
+      } satisfies ChannelsSnapshot)
+    }
   }
 }
 
