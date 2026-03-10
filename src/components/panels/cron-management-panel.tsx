@@ -783,12 +783,12 @@ export function CronManagementPanel() {
                       )}
                       {job.lastRun && (
                         <div className="text-xs text-muted-foreground mt-2">
-                          Last run: {formatRelativeTime(job.lastRun)}
+                          Last run: {formatRelativeTime(job.lastRun)} · {new Date(job.lastRun).toLocaleString()}
                         </div>
                       )}
                       {job.nextRun && (
                         <div className="text-xs text-primary/70 mt-1">
-                          Next: {formatRelativeTime(job.nextRun, true)}
+                          Next: {formatRelativeTime(job.nextRun, true)} · {new Date(job.nextRun).toLocaleString()}
                         </div>
                       )}
                     </div>
