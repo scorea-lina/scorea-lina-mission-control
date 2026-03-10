@@ -1,8 +1,9 @@
 'use client'
 
 import { useRouter, usePathname } from 'next/navigation'
-import { useCallback, useEffect } from 'react'
+import { startTransition, useCallback, useEffect } from 'react'
 import { startNavigationTiming } from '@/lib/navigation-metrics'
+import { useMissionControl } from '@/store'
 
 export function panelHref(panel: string): string {
   return panel === 'overview' ? '/' : `/${panel}`
@@ -28,6 +29,7 @@ function safePrefetch(router: ReturnType<typeof useRouter>, href: string) {
 export function useNavigateToPanel() {
   const router = useRouter()
   const pathname = usePathname()
+  const { setActiveTab, setChatPanelOpen } = useMissionControl()
 
   useEffect(() => {
     for (const panel of DEFAULT_PREFETCH_PANELS) {
@@ -41,8 +43,14 @@ export function useNavigateToPanel() {
     if (href === pathname) return
     safePrefetch(router, href)
     startNavigationTiming(pathname, href)
-    router.push(href, { scroll: false })
-  }, [pathname, router])
+    setActiveTab(panel === 'sessions' ? 'chat' : panel)
+    if (panel === 'chat' || panel === 'sessions') {
+      setChatPanelOpen(false)
+    }
+    startTransition(() => {
+      router.push(href, { scroll: false })
+    })
+  }, [pathname, router, setActiveTab, setChatPanelOpen])
 }
 
 export function usePrefetchPanel() {

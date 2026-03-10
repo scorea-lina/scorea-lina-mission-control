@@ -49,7 +49,7 @@ import { ExecApprovalOverlay } from '@/components/modals/exec-approval-overlay'
 import { useWebSocket } from '@/lib/websocket'
 import { useServerEvents } from '@/lib/use-server-events'
 import { completeNavigationTiming } from '@/lib/navigation-metrics'
-import { useNavigateToPanel } from '@/lib/navigation'
+import { panelHref, useNavigateToPanel } from '@/lib/navigation'
 import { Button } from '@/components/ui/button'
 import { useMissionControl } from '@/store'
 
@@ -80,6 +80,10 @@ export default function Home() {
   useEffect(() => {
     completeNavigationTiming(pathname)
   }, [pathname])
+
+  useEffect(() => {
+    completeNavigationTiming(panelHref(activeTab))
+  }, [activeTab])
 
   useEffect(() => {
     setActiveTab(normalizedPanel)

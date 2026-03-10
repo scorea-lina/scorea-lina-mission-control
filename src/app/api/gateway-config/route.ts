@@ -153,6 +153,16 @@ export async function PUT(request: NextRequest) {
 
     const parsed = JSON.parse(raw)
 
+    for (const dotPath of Object.keys(body.updates)) {
+      const [rootKey] = dotPath.split('.')
+      if (!rootKey || !(rootKey in parsed)) {
+        return NextResponse.json(
+          { error: `Unknown config root: ${rootKey || dotPath}` },
+          { status: 400 },
+        )
+      }
+    }
+
     // Apply updates via dot-notation
     const appliedKeys: string[] = []
     for (const [dotPath, value] of Object.entries(body.updates)) {

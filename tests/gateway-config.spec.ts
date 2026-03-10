@@ -71,7 +71,7 @@ test.describe('Gateway Config API', () => {
     const res = await request.put('/api/gateway-config', {
       headers: API_KEY_HEADER,
       data: {
-        updates: { 'test.e2e_dummy': 'should-not-write' },
+        updates: { 'logging.redactSensitive': 'all' },
         hash: 'stale-hash-that-does-not-match',
       },
     })
