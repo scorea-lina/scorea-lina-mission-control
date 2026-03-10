@@ -44,12 +44,26 @@ migrate_runtime_data_dir() {
   fi
 
   echo "==> migrating runtime data to $target_data_dir"
-  rsync -a \
-    --exclude 'mission-control.db-shm' \
-    --exclude 'mission-control.db-wal' \
-    --exclude '*.db-shm' \
-    --exclude '*.db-wal' \
-    "$SOURCE_DATA_DIR"/ "$target_data_dir"/
+  if command -v sqlite3 >/dev/null 2>&1; then
+    local target_db_tmp="$target_db.tmp"
+    rm -f "$target_db_tmp"
+    sqlite3 "$source_db" ".backup '$target_db_tmp'"
+    mv "$target_db_tmp" "$target_db"
+
+    if [[ -f "$SOURCE_DATA_DIR/mission-control-tokens.json" ]]; then
+      cp "$SOURCE_DATA_DIR/mission-control-tokens.json" "$target_data_dir/mission-control-tokens.json"
+    fi
+    if [[ -d "$SOURCE_DATA_DIR/backups" ]]; then
+      rsync -a "$SOURCE_DATA_DIR/backups"/ "$target_data_dir/backups"/
+    fi
+  else
+    rsync -a \
+      --exclude 'mission-control.db-shm' \
+      --exclude 'mission-control.db-wal' \
+      --exclude '*.db-shm' \
+      --exclude '*.db-wal' \
+      "$SOURCE_DATA_DIR"/ "$target_data_dir"/
+  fi
 }
 
 cd "$PROJECT_ROOT"
