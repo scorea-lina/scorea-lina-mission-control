@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { validateBody, updateTaskSchema } from '@/lib/validation';
 import { resolveMentionRecipients } from '@/lib/mentions';
 import { normalizeTaskUpdateStatus } from '@/lib/task-status';
+import { upsertTaskStatus, isValidStatus, requireApiKey as requireApiKeyHeader } from "@/lib/task-control-plane";
 import { pushTaskToGitHub } from '@/lib/github-sync-engine';
 
 function formatTicketRef(prefix?: string | null, num?: number | null): string | undefined {
@@ -470,5 +471,47 @@ export async function DELETE(
   } catch (error) {
     logger.error({ err: error }, 'DELETE /api/tasks/[id] error');
     return NextResponse.json({ error: 'Failed to delete task' }, { status: 500 });
+  }
+}
+
+/**
+ * Control-plane PATCH /api/tasks/:id
+ * Auth: x-api-key (API_KEY env)
+ * Body: { status: "assigned"|"in_progress"|"in_review"|"ready"|"done" }
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    requireApiKeyHeader(request);
+
+    const resolvedParams = await params;
+    const taskId = parseInt(resolvedParams.id);
+    if (isNaN(taskId)) {
+      return NextResponse.json({ ok: false, error: "Invalid task ID" }, { status: 400 });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const status = body?.status;
+    if (!isValidStatus(status)) {
+      return NextResponse.json({ ok: false, error: "Invalid status" }, { status: 400 });
+    }
+
+    const db = getDatabase();
+    const now = Math.floor(Date.now() / 1000);
+    const stmt = db.prepare("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?");
+    const info = stmt.run(status, now, taskId);
+    if (info.changes === 0) {
+      return NextResponse.json({ ok: false, error: "Task not found" }, { status: 404 });
+    }
+
+    const controlPlane = await upsertTaskStatus(taskId, status);
+
+    return NextResponse.json({ ok: true, taskId, status, controlPlane });
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    const status = msg === "Unauthorized" ? 401 : 500;
+    return NextResponse.json({ ok: false, error: msg }, { status });
   }
 }
