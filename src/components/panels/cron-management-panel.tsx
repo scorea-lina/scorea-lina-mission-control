@@ -542,7 +542,7 @@ export function CronManagementPanel() {
       // Schedule kind filter: detect from the schedule string
       let matchesKind = true
       if (scheduleKindFilter !== 'all') {
-        const sched = job.schedule.toLowerCase()
+        const sched = typeof job.schedule === "string" ? job.schedule.toLowerCase() : ""
         if (scheduleKindFilter === 'cron') {
           // Standard 5-field cron
           matchesKind = sched.replace(/\s*\([^)]+\)$/, '').trim().split(/\s+/).length === 5
@@ -561,7 +561,7 @@ export function CronManagementPanel() {
         case 'name':
           return dir * a.name.localeCompare(b.name)
         case 'schedule':
-          return dir * a.schedule.localeCompare(b.schedule)
+          return dir * (String(a.schedule || "").localeCompare(String(b.schedule || "")))
         case 'lastRun':
           return dir * ((a.lastRun || 0) - (b.lastRun || 0))
         case 'nextRun':
