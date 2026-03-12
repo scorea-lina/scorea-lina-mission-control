@@ -110,9 +110,9 @@ function mapOpenClawJob(job: OpenClawCronJob): CronJob {
     ? job.payload.message.slice(0, 200) + (job.payload.message.length > 200 ? '...' : '')
     : `${job.payload.kind} (${job.agentId})`
 
-  const scheduleStr = job.schedule.tz
-    ? `${job.schedule.expr} (${job.schedule.tz})`
-    : job.schedule.expr
+  const expr = job.schedule?.expr
+  const tz = job.schedule?.tz
+  const scheduleStr = typeof expr === "string" ? (tz ? `${expr} (${tz})` : expr) : ""
 
   return {
     id: job.id,
@@ -125,7 +125,7 @@ function mapOpenClawJob(job: OpenClawCronJob): CronJob {
     lastStatus: mapLastStatus(job.state?.lastStatus),
     lastError: job.state?.lastError,
     agentId: job.agentId,
-    timezone: job.schedule.tz,
+    timezone: tz,
     model: job.payload.model,
     delivery: job.delivery?.mode === 'none' ? undefined : job.delivery?.channel,
   }
