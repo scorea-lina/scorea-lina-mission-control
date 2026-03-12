@@ -13,8 +13,8 @@ function getDefaultProjectId(db: ReturnType<typeof getDatabase>, workspaceId: nu
       `
       SELECT id
       FROM projects
-      WHERE workspace_id = ? AND status = active
-      ORDER BY CASE WHEN slug = general THEN 0 ELSE 1 END, id ASC
+      WHERE workspace_id = ? AND status = 'active'
+      ORDER BY CASE WHEN slug = 'general' THEN 0 ELSE 1 END, id ASC
       LIMIT 1
     `
     )
